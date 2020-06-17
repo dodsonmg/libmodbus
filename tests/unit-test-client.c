@@ -627,10 +627,11 @@ int main(int argc, char *argv[])
         modbus_flush(ctx);
 
         /* Timeout of 7ms between bytes */
-        modbus_set_byte_timeout(ctx, 0, 7000);
+        /* This seems to create problems on QEMU.  Setting timeout to 70ms instead */
+        modbus_set_byte_timeout(ctx, 0, 70000);
         rc = modbus_read_registers(ctx, UT_REGISTERS_ADDRESS_BYTE_SLEEP_5_MS,
                                    1, tab_rp_registers);
-        printf("2/2 Adapted byte timeout (7ms > 5ms): ");
+        printf("2/2 Adapted byte timeout (70ms > 5ms): ");
         ASSERT_TRUE(rc == 1, "");
     }
 
