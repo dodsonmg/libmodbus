@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <modbus.h>
+#include <modbus/modbus.h>
 
 #include "unit-test.h"
 
@@ -28,7 +28,7 @@ int send_crafted_request(modbus_t *ctx, int function,
                          int backend_length, int backend_offset);
 int equal_dword(uint16_t *tab_reg, const uint32_t value);
 
-#define BUG_REPORT(_cond, _format, _args ...) \
+#define BUG_REPORT(_cond, _format, _args...) \
     printf("\nLine %d: assertion error for '%s': " _format "\n", __LINE__, # _cond, ## _args)
 
 #define ASSERT_TRUE(_cond, _format, __args...) {  \

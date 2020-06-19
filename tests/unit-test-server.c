@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <modbus.h>
+#include <modbus/modbus.h>
 #ifdef _WIN32
 # include <winsock2.h>
 #else

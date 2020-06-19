@@ -20,6 +20,7 @@
 
 #include "modbus/modbus.h"
 #include "modbus-private.h"
+#include "modbus-version.h"
 
 /* Internal use */
 #define MSG_LENGTH_UNDEFINED -1
