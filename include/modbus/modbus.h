@@ -18,8 +18,6 @@
 #include "stdint.h"
 #endif
 
-#include "modbus-version.h"
-
 #if defined(_MSC_VER)
 # if defined(DLLBUILD)
 /* define DLLBUILD when building the DLL */

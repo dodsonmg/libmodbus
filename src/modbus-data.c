@@ -21,13 +21,7 @@
 #  include <arpa/inet.h>
 #endif
 
-#include <config.h>
-
-#include "modbus.h"
-
-#if defined(HAVE_BYTESWAP_H)
-#  include <byteswap.h>
-#endif
+#include "modbus/modbus.h"
 
 #if defined(__APPLE__)
 #  include <libkern/OSByteOrder.h>
