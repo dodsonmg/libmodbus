@@ -233,6 +233,7 @@ MODBUS_API int modbus_receive_confirmation(modbus_t *ctx, uint8_t *rsp);
 
 MODBUS_API int modbus_reply(modbus_t *ctx, const uint8_t *req,
                             int req_length, modbus_mapping_t *mb_mapping);
+MODBUS_API int modbus_get_function(modbus_t *ctx, const uint8_t *req);
 MODBUS_API int modbus_reply_exception(modbus_t *ctx, const uint8_t *req,
                                       unsigned int exception_code);
 
