@@ -22,6 +22,16 @@
 #include "modbus-private.h"
 #include "modbus-version.h"
 
+/* For CHERI */
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+
+// TODO:  Remove this when testing is complete
+#if __has_feature(capabilities)
+#include "cheri_helper.h"
+#endif // __has_feature(capabilities)
+
 /* Internal use */
 #define MSG_LENGTH_UNDEFINED -1
 
@@ -999,6 +1009,24 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
     /* Suppress any responses when the request was a broadcast */
     return (ctx->backend->backend_type == _MODBUS_BACKEND_TYPE_RTU &&
             slave == MODBUS_BROADCAST_ADDRESS) ? 0 : send_msg(ctx, rsp, rsp_length);
+}
+
+/**
+ * Helper to get the function code from the modbus request
+ * */
+int modbus_get_function(modbus_t *ctx, const uint8_t *req)
+{
+    int offset;
+    int function;
+
+    if (ctx == NULL) {
+        return -1;
+    }
+
+    offset = ctx->backend->header_length;
+    function = req[offset];
+
+    return function;
 }
 
 int modbus_reply_exception(modbus_t *ctx, const uint8_t *req,
