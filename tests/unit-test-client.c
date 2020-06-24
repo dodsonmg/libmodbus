@@ -13,6 +13,10 @@
 
 #include "unit-test.h"
 
+// ignore variadic arguments from the ASSERT_TRUE macro
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+
 const int EXCEPTION_RC = 2;
 
 enum {
@@ -28,14 +32,14 @@ int send_crafted_request(modbus_t *ctx, int function,
                          int backend_length, int backend_offset);
 int equal_dword(uint16_t *tab_reg, const uint32_t value);
 
-#define BUG_REPORT(_cond, _format, _args...) \
-    printf("\nLine %d: assertion error for '%s': " _format "\n", __LINE__, # _cond, ## _args)
+#define BUG_REPORT(_cond, _format, ...) \
+    printf("\nLine %d: assertion error for '%s': " _format "\n", __LINE__, #_cond, ##__VA_ARGS__)
 
-#define ASSERT_TRUE(_cond, _format, __args...) {  \
+#define ASSERT_TRUE(_cond, _format, ...) {  \
     if (_cond) {                                  \
         printf("OK\n");                           \
     } else {                                      \
-        BUG_REPORT(_cond, _format, ## __args);    \
+        BUG_REPORT(_cond, _format, ##__VA_ARGS__);    \
         goto close;                               \
     }                                             \
 };
