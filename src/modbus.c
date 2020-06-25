@@ -22,16 +22,6 @@
 #include "modbus-private.h"
 #include "modbus-version.h"
 
-/* For CHERI */
-#ifndef __has_feature
-#define __has_feature(x) 0
-#endif
-
-// TODO:  Remove this when testing is complete
-#if __has_feature(capabilities)
-#include "cheri_helper.h"
-#endif // __has_feature(capabilities)
-
 /* Internal use */
 #define MSG_LENGTH_UNDEFINED -1
 
@@ -764,6 +754,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
         } else {
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             rsp[rsp_length++] = (nb / 8) + ((nb % 8) ? 1 : 0);
+
             rsp_length = response_io_status(tab_bits, mapping_address, nb,
                                             rsp, rsp_length);
         }

@@ -18,6 +18,16 @@
 #include "stdint.h"
 #endif
 
+/* For CHERI */
+/* TODO:  Remove this when testing is complete */
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+
+#if __has_feature(capabilities)
+#include "cheri_helper.h"
+#endif // __has_feature(capabilities)
+
 #if defined(_MSC_VER)
 # if defined(DLLBUILD)
 /* define DLLBUILD when building the DLL */
