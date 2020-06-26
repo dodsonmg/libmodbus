@@ -35,23 +35,23 @@ install(
 )
 
 # build unit tests for client and server
-add_executable(unit_test_client
-  tests/unit-test-client.c)
-target_link_libraries(unit_test_client modbus)
-ament_target_dependencies(unit_test_client modbus)
+# add_executable(unit_test_client
+#   tests/unit-test-client.c)
+# target_link_libraries(unit_test_client modbus)
+# ament_target_dependencies(unit_test_client modbus)
 
-install(TARGETS
-  unit_test_client
-  DESTINATION lib/${PROJECT_NAME})
+# install(TARGETS
+#   unit_test_client
+#   DESTINATION lib/${PROJECT_NAME})
 
-add_executable(unit_test_server
-  tests/unit-test-server.c)
-  target_link_libraries(unit_test_server modbus)
-  ament_target_dependencies(unit_test_server modbus)
+# add_executable(unit_test_server
+#   tests/unit-test-server.c)
+#   target_link_libraries(unit_test_server modbus)
+#   ament_target_dependencies(unit_test_server modbus)
 
-  install(TARGETS
-    unit_test_server
-    DESTINATION lib/${PROJECT_NAME})
+# install(TARGETS
+#   unit_test_server
+#   DESTINATION lib/${PROJECT_NAME})
 
 ament_export_include_directories(include)
 ament_export_libraries(modbus)
