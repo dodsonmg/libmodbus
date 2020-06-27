@@ -154,6 +154,9 @@ static unsigned int compute_response_length_from_request(modbus_t *ctx, uint8_t 
     case MODBUS_FC_MASK_WRITE_REGISTER:
         length = 7;
         break;
+    case MODBUS_FC_WRITE_STRING:
+        length = 6;
+        break;
     default:
         length = 5;
     }
@@ -162,7 +165,8 @@ static unsigned int compute_response_length_from_request(modbus_t *ctx, uint8_t 
 }
 
 /* Sends a request/response */
-static int send_msg(modbus_t *ctx, uint8_t *msg, int msg_length)
+// static int send_msg(modbus_t *ctx, uint8_t *msg, int msg_length)
+int send_msg(modbus_t *ctx, uint8_t *msg, int msg_length)
 {
     int rc;
     int i;
@@ -257,7 +261,8 @@ static uint8_t compute_meta_length_after_function(int function,
         if (function <= MODBUS_FC_WRITE_SINGLE_REGISTER) {
             length = 4;
         } else if (function == MODBUS_FC_WRITE_MULTIPLE_COILS ||
-                   function == MODBUS_FC_WRITE_MULTIPLE_REGISTERS) {
+                   function == MODBUS_FC_WRITE_MULTIPLE_REGISTERS ||
+                   function == MODBUS_FC_WRITE_STRING) {
             length = 5;
         } else if (function == MODBUS_FC_MASK_WRITE_REGISTER) {
             length = 6;
@@ -279,6 +284,9 @@ static uint8_t compute_meta_length_after_function(int function,
         case MODBUS_FC_MASK_WRITE_REGISTER:
             length = 6;
             break;
+        case MODBUS_FC_WRITE_STRING:
+            length = 5;
+            break;
         default:
             length = 1;
         }
@@ -298,6 +306,7 @@ static int compute_data_length_after_meta(modbus_t *ctx, uint8_t *msg,
         switch (function) {
         case MODBUS_FC_WRITE_MULTIPLE_COILS:
         case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
+        case MODBUS_FC_WRITE_STRING:
             length = msg[ctx->backend->header_length + 5];
             break;
         case MODBUS_FC_WRITE_AND_READ_REGISTERS:
@@ -598,6 +607,10 @@ static int check_confirmation(modbus_t *ctx, uint8_t *req,
         case MODBUS_FC_REPORT_SLAVE_ID:
             /* Report slave ID (bytes received) */
             req_nb_value = rsp_nb_value = rsp[offset + 1];
+            break;
+        case MODBUS_FC_WRITE_STRING:
+            req_nb_value = req[offset + 5];
+            rsp_nb_value = rsp[offset + 5];
             break;
         default:
             /* 1 Write functions & others */
@@ -1005,6 +1018,27 @@ int modbus_process_request(modbus_t *ctx, const uint8_t *req,
     }
         break;
 
+    case MODBUS_FC_WRITE_STRING: {
+        int nb_bytes = req[offset + 5];
+
+        if (nb_bytes < 1) {
+            *rsp_length = response_exception(
+                ctx, &sft, MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE, rsp, TRUE,
+                "Illegal string: size must be non-zero\n");
+        } else {
+            int i;
+            for (i = 0; i < nb_bytes; i++) {
+                /* 6 = first value */
+                mb_mapping->tab_string[i] = req[offset + 6 + i];
+            }
+
+            *rsp_length = ctx->backend->build_response_basis(&sft, rsp);
+            /* 5 bytes to copy four empty bytes (address and num registers) and the size of the string */
+            memcpy(rsp + *rsp_length, req + *rsp_length, 5);
+            *rsp_length += 5;
+        }
+    }
+        break;
     default:
         *rsp_length = response_exception(
             ctx, &sft, MODBUS_EXCEPTION_ILLEGAL_FUNCTION, rsp, TRUE,
@@ -1420,6 +1454,45 @@ int modbus_write_registers(modbus_t *ctx, int addr, int nb, const uint16_t *src)
     for (i = 0; i < nb; i++) {
         req[req_length++] = src[i] >> 8;
         req[req_length++] = src[i] & 0x00FF;
+    }
+
+    rc = send_msg(ctx, req, req_length);
+    if (rc > 0) {
+        uint8_t rsp[MAX_MESSAGE_LENGTH];
+
+        rc = _modbus_receive_msg(ctx, rsp, MSG_CONFIRMATION);
+        if (rc == -1)
+            return -1;
+
+        rc = check_confirmation(ctx, req, rsp, rc);
+    }
+
+    return rc;
+}
+
+/* Write a string to the remote device */
+int modbus_write_string(modbus_t *ctx, int addr, const uint8_t *str, int str_length)
+{
+    int rc;
+    int i;
+    int req_length;
+    int byte_count;
+    uint8_t req[_MIN_REQ_LENGTH + str_length + 1];
+
+    if (ctx == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    req_length = ctx->backend->build_request_basis(ctx,
+                                                   MODBUS_FC_WRITE_STRING,
+                                                   0x0, 0x0, req);
+
+    byte_count = str_length;
+    req[req_length++] = byte_count;
+
+    for (i = 0; i < str_length; i++) {
+        req[req_length++] = str[i];
     }
 
     rc = send_msg(ctx, req, req_length);
@@ -1881,6 +1954,26 @@ modbus_mapping_t* modbus_mapping_new_start_address(
         memset(mb_mapping->tab_input_registers, 0,
                nb_input_registers * sizeof(uint16_t));
     }
+
+    /* 0X */
+    // mb_mapping->nb_bits = nb_bits;
+    // mb_mapping->start_bits = start_bits;
+    // if (nb_bits == 0) {
+    //     mb_mapping->tab_bits = NULL;
+    // } else {
+    /* Negative number raises a POSIX error */
+    mb_mapping->tab_string =
+        (uint8_t *) malloc(MODBUS_MAX_ADU_LENGTH * sizeof(uint8_t));
+    if (mb_mapping->tab_string == NULL) {
+        free(mb_mapping->tab_input_registers);
+        free(mb_mapping->tab_registers);
+        free(mb_mapping->tab_input_bits);
+        free(mb_mapping->tab_bits);
+        free(mb_mapping);
+        return NULL;
+    }
+    memset(mb_mapping->tab_string, 0, MODBUS_MAX_ADU_LENGTH * sizeof(uint8_t));
+    // }
 
     return mb_mapping;
 }
