@@ -179,9 +179,10 @@ typedef struct _modbus_mapping_t {
 
 typedef enum
 {
-    MODBUS_ERROR_RECOVERY_NONE          = 0,
-    MODBUS_ERROR_RECOVERY_LINK          = (1<<1),
-    MODBUS_ERROR_RECOVERY_PROTOCOL      = (1<<2)
+    MODBUS_ERROR_RECOVERY_NONE              = 0,
+    MODBUS_ERROR_RECOVERY_LINK              = (1<<1),
+    MODBUS_ERROR_RECOVERY_PROTOCOL          = (1<<2),
+    MODBUS_ERROR_RECOVERY_LINK_AND_PROTOCOL = MODBUS_ERROR_RECOVERY_LINK | MODBUS_ERROR_RECOVERY_PROTOCOL
 } modbus_error_recovery_mode;
 
 MODBUS_API int modbus_set_slave(modbus_t* ctx, int slave);
