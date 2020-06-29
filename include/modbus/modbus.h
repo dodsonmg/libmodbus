@@ -119,6 +119,18 @@ MODBUS_BEGIN_DECLS
  */
 #define MODBUS_MAX_ADU_LENGTH              260
 
+/**
+ * The size of a string message is bounded by 16 bits, making the largest
+ * possible string 65,535 characters; however, this is much larger than
+ * any reasonable Macaroon, so we'll limit it to 1,024 for now.
+ *
+ * Note: this is much larger than the maximum ADU length for Modbus,
+ * but we're treating the Macaroon string as a kind of side channel.  This
+ * is probably realistic for any Modbus TCP implementation, but may need
+ * reconsideration for a realistic RTU implementation.
+ * */
+#define MODBUS_MAX_STRING_LENGTH            1024
+
 /* Random number to avoid errno conflicts */
 #define MODBUS_ENOBASE 112345678
 
@@ -224,7 +236,7 @@ MODBUS_API int modbus_write_bit(modbus_t *ctx, int coil_addr, int status);
 MODBUS_API int modbus_write_register(modbus_t *ctx, int reg_addr, const uint16_t value);
 MODBUS_API int modbus_write_bits(modbus_t *ctx, int addr, int nb, const uint8_t *data);
 MODBUS_API int modbus_write_registers(modbus_t *ctx, int addr, int nb, const uint16_t *data);
-MODBUS_API int modbus_write_string(modbus_t *ctx, int addr, const uint8_t *str, int str_length);
+MODBUS_API int modbus_write_string(modbus_t *ctx, const uint8_t *str, int str_length);
 MODBUS_API int modbus_mask_write_register(modbus_t *ctx, int addr, uint16_t and_mask, uint16_t or_mask);
 MODBUS_API int modbus_write_and_read_registers(modbus_t *ctx, int write_addr, int write_nb,
                                                const uint16_t *src, int read_addr, int read_nb,
