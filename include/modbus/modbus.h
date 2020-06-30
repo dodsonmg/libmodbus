@@ -226,8 +226,6 @@ MODBUS_API int modbus_set_debug(modbus_t *ctx, int flag);
 
 MODBUS_API const char *modbus_strerror(int errnum);
 
-MODBUS_API int send_msg(modbus_t *ctx, uint8_t *msg, int msg_length);
-
 MODBUS_API int modbus_read_bits(modbus_t *ctx, int addr, int nb, uint8_t *dest);
 MODBUS_API int modbus_read_input_bits(modbus_t *ctx, int addr, int nb, uint8_t *dest);
 MODBUS_API int modbus_read_registers(modbus_t *ctx, int addr, int nb, uint16_t *dest);

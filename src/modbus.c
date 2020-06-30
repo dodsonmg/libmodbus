@@ -162,8 +162,7 @@ static unsigned int compute_response_length_from_request(modbus_t *ctx, uint8_t 
 }
 
 /* Sends a request/response */
-// static int send_msg(modbus_t *ctx, uint8_t *msg, int msg_length)
-int send_msg(modbus_t *ctx, uint8_t *msg, int msg_length)
+static int send_msg(modbus_t *ctx, uint8_t *msg, int msg_length)
 {
     int rc;
     int i;
