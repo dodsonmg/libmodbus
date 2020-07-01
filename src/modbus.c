@@ -1908,8 +1908,8 @@ int modbus_set_debug(modbus_t *ctx, int flag)
     return 0;
 }
 
-/* Allocates 4 arrays to store bits, input bits, registers and inputs
-   registers. The pointers are stored in modbus_mapping structure.
+/* Allocates 5 arrays to store bits, input bits, registers, inputs
+   registers, and a string. The pointers are stored in modbus_mapping structure.
 
    The modbus_mapping_new_start_address() function shall return the new allocated
    structure if successful. Otherwise it shall return NULL and set errno to
