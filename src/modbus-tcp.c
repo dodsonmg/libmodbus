@@ -744,11 +744,17 @@ static void _modbus_tcp_free(modbus_t *ctx) {
     free(ctx);
 }
 
+/**
+ * MODIFIED:
+ *   MODBUS_TCP_MAX_ADU_LENGTH -> MODBUS_MAX_STRING_LENGTH
+ *   supports use of Macaroons without getting 'too many data' error
+ * */
 const modbus_backend_t _modbus_tcp_backend = {
     _MODBUS_BACKEND_TYPE_TCP,
     _MODBUS_TCP_HEADER_LENGTH,
     _MODBUS_TCP_CHECKSUM_LENGTH,
-    MODBUS_TCP_MAX_ADU_LENGTH,
+    // MODBUS_TCP_MAX_ADU_LENGTH,
+    MODBUS_MAX_STRING_LENGTH,
     _modbus_set_slave,
     _modbus_tcp_build_request_basis,
     _modbus_tcp_build_response_basis,

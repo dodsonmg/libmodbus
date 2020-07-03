@@ -259,7 +259,8 @@ MODBUS_API int modbus_receive_confirmation(modbus_t *ctx, uint8_t *rsp);
 
 MODBUS_API int modbus_reply(modbus_t *ctx, uint8_t *rsp, int rsp_length);
 MODBUS_API int modbus_decompose_request(modbus_t *ctx, const uint8_t *req, int *offset,
-                                        int *slave, int *function, uint16_t *addr, int *nb);
+                                        int *slave, int *function, uint16_t *addr, int *nb,
+                                        uint16_t *addr_wr, int *nb_wr);
 MODBUS_API int modbus_process_request(modbus_t *ctx, const uint8_t *req,
                                       int req_length, uint8_t *rsp, int *rsp_length,
                                       modbus_mapping_t *mb_mapping);
