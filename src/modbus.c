@@ -1552,7 +1552,7 @@ int modbus_read_string(modbus_t *ctx, uint8_t *dest)
     int rc;
     int req_length;
     uint8_t req[_MIN_REQ_LENGTH];
-    uint8_t rsp[MAX_MESSAGE_LENGTH];
+    uint8_t rsp[MODBUS_MAX_STRING_LENGTH];
 
     /* addr and nb are both 0x0 */
     req_length = ctx->backend->build_request_basis(ctx, MODBUS_FC_READ_STRING, 0x0, 0x0, req);
@@ -1573,7 +1573,7 @@ int modbus_read_string(modbus_t *ctx, uint8_t *dest)
         offset = ctx->backend->header_length;
 
         for (i = 0; i < rc; i++) {
-            dest[i] = rsp[offset + 1 + i];
+            dest[i] = rsp[offset + 2 + i];
         }
     }
 
