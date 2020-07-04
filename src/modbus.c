@@ -263,7 +263,7 @@ static uint8_t compute_meta_length_after_function(int function,
             length = 6;
         } else if (function == MODBUS_FC_WRITE_AND_READ_REGISTERS) {
             length = 9;
-        } else if (function == MODBUS_FC_WRITE_STRING) {
+        } else if (function == MODBUS_FC_WRITE_TOKEN) {
             length = 4;
         } else {
             /* MODBUS_FC_READ_EXCEPTION_STATUS, MODBUS_FC_REPORT_SLAVE_ID */
@@ -276,7 +276,7 @@ static uint8_t compute_meta_length_after_function(int function,
         case MODBUS_FC_WRITE_SINGLE_REGISTER:
         case MODBUS_FC_WRITE_MULTIPLE_COILS:
         case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
-        case MODBUS_FC_WRITE_STRING:
+        case MODBUS_FC_WRITE_TOKEN:
             length = 4;
             break;
         case MODBUS_FC_MASK_WRITE_REGISTER:
@@ -306,7 +306,7 @@ static int compute_data_length_after_meta(modbus_t *ctx, uint8_t *msg,
         case MODBUS_FC_WRITE_AND_READ_REGISTERS:
             length = msg[ctx->backend->header_length + 9];
             break;
-        case MODBUS_FC_WRITE_STRING:
+        case MODBUS_FC_WRITE_TOKEN:
             length = msg[ctx->backend->header_length + 3] << 8 |
                 msg[ctx->backend->header_length + 4];
             break;
@@ -598,7 +598,7 @@ static int check_confirmation(modbus_t *ctx, uint8_t *req,
             break;
         case MODBUS_FC_WRITE_MULTIPLE_COILS:
         case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
-        case MODBUS_FC_WRITE_STRING:
+        case MODBUS_FC_WRITE_TOKEN:
             /* N Write functions */
             req_nb_value = (req[offset + 3] << 8) + req[offset + 4];
             rsp_nb_value = (rsp[offset + 3] << 8) | rsp[offset + 4];
@@ -747,7 +747,7 @@ int modbus_decompose_request(modbus_t *ctx, const uint8_t *req, int *offset,
     case MODBUS_FC_READ_COILS:
     case MODBUS_FC_READ_DISCRETE_INPUTS:
     case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
-    case MODBUS_FC_WRITE_STRING:
+    case MODBUS_FC_WRITE_TOKEN:
     case MODBUS_FC_READ_HOLDING_REGISTERS:
     case MODBUS_FC_READ_INPUT_REGISTERS:
     case MODBUS_FC_WRITE_MULTIPLE_COILS:
@@ -1067,7 +1067,7 @@ int modbus_process_request(modbus_t *ctx, const uint8_t *req,
     }
         break;
 
-    case MODBUS_FC_WRITE_STRING: {
+    case MODBUS_FC_WRITE_TOKEN: {
         int nb = (req[offset + 3] << 8) + req[offset + 4];
         int nb_bytes = nb;
 
@@ -1520,8 +1520,8 @@ int modbus_write_registers(modbus_t *ctx, int addr, int nb, const uint16_t *src)
     return rc;
 }
 
-/* Write a string to the remote device */
-int modbus_write_string(modbus_t *ctx, const uint8_t *str, int str_length)
+/* Write a token (string) to the remote device */
+int modbus_write_token(modbus_t *ctx, const uint8_t *str, int str_length)
 {
     int rc;
     int i;
@@ -1539,7 +1539,7 @@ int modbus_write_string(modbus_t *ctx, const uint8_t *str, int str_length)
     addr = 0x0;
 
     req_length = ctx->backend->build_request_basis(ctx,
-                                                   MODBUS_FC_WRITE_STRING,
+                                                   MODBUS_FC_WRITE_TOKEN,
                                                    addr, byte_count, req);
 
     for (i = 0; i < str_length; i++) {

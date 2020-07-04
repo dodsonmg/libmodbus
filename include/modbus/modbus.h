@@ -78,7 +78,8 @@ MODBUS_BEGIN_DECLS
 #define MODBUS_FC_REPORT_SLAVE_ID           0x11
 #define MODBUS_FC_MASK_WRITE_REGISTER       0x16
 #define MODBUS_FC_WRITE_AND_READ_REGISTERS  0x17
-#define MODBUS_FC_WRITE_STRING              0x18    // added to support macaroons
+#define MODBUS_FC_READ_TOKEN                0x18    // added to support macaroons
+#define MODBUS_FC_WRITE_TOKEN               0x19    // added to support macaroons
 
 #define MODBUS_BROADCAST_ADDRESS    0
 
@@ -234,7 +235,8 @@ MODBUS_API int modbus_write_bit(modbus_t *ctx, int coil_addr, int status);
 MODBUS_API int modbus_write_register(modbus_t *ctx, int reg_addr, const uint16_t value);
 MODBUS_API int modbus_write_bits(modbus_t *ctx, int addr, int nb, const uint8_t *data);
 MODBUS_API int modbus_write_registers(modbus_t *ctx, int addr, int nb, const uint16_t *data);
-MODBUS_API int modbus_write_string(modbus_t *ctx, const uint8_t *str, int str_length);
+// MODBUS_API int modbus_read_token(modbus_t *ctx, uint8_t *dest);
+MODBUS_API int modbus_write_token(modbus_t *ctx, const uint8_t *str, int str_length);
 MODBUS_API int modbus_mask_write_register(modbus_t *ctx, int addr, uint16_t and_mask, uint16_t or_mask);
 MODBUS_API int modbus_write_and_read_registers(modbus_t *ctx, int write_addr, int write_nb,
                                                const uint16_t *src, int read_addr, int read_nb,
