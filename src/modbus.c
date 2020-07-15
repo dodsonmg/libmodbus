@@ -1979,6 +1979,19 @@ int modbus_set_debug(modbus_t *ctx, int flag)
     return 0;
 }
 
+/**
+ * MODIFIED: Added this function
+ * */
+int modbus_get_debug(modbus_t *ctx)
+{
+    if (ctx == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return ctx->debug;
+}
+
 /* Allocates 5 arrays to store bits, input bits, registers, inputs
    registers, and a string. The pointers are stored in modbus_mapping structure.
 
