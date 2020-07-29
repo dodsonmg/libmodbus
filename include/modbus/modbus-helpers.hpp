@@ -21,6 +21,7 @@ const std::string display_marker(80, '*');
 
 void print_shim_info(std::string file, std::string function);
 void print_modbus_function_name(int function);
+std::string get_modbus_function_name(modbus_t *ctx, const uint8_t *req);
 std::string get_modbus_function_name(int function);
 void print_mb_mapping(modbus_mapping_t* mb_mapping);
 void print_modbus_decompose_request(modbus_t *ctx, const uint8_t *req,

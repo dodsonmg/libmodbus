@@ -28,6 +28,21 @@ print_modbus_function_name(int function)
 }
 
 std::string
+get_modbus_function_name(modbus_t *ctx, const uint8_t *req)
+{
+    int *offset = (int *)malloc(sizeof(int));
+    int *slave_id = (int *)malloc(sizeof(int));
+    int *function = (int *)malloc(sizeof(int));
+    uint16_t *addr = (uint16_t *)malloc(sizeof(uint16_t));
+    int *nb = (int *)malloc(sizeof(int));
+    uint16_t *addr_wr = (uint16_t *)malloc(sizeof(uint16_t));  // only for write_and_read_registers
+    int *nb_wr = (int *)malloc(sizeof(int));    // only for write_and_read_registers
+
+    modbus_decompose_request(ctx, req, offset, slave_id, function, addr, nb, addr_wr, nb_wr);
+    return get_modbus_function_name(*function);
+}
+
+std::string
 get_modbus_function_name(int function)
 {
     switch(function) {
