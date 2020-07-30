@@ -53,9 +53,9 @@ modbus_get_function_name(modbus_t *ctx, const uint8_t *req)
     /* distinguish between reading a single or multiple coils */
     if(name == "MODBUS_FC_READ_COILS") {
         if(*nb == 1) {
-            name += "MODBUS_FC_READ_SINGLE_COIL";
+            name = "MODBUS_FC_READ_SINGLE_COIL";
         } else {
-            name += "MODBUS_FC_READ_MULTIPLE_COILS";
+            name = "MODBUS_FC_READ_MULTIPLE_COILS";
         }
     }
 
