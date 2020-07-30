@@ -726,60 +726,6 @@ int modbus_reply(modbus_t *ctx, uint8_t *rsp, int rsp_length)
 }
 
 /**
- * MODIFIED:  This function was added
- *
- * Decomposes the request.
- *
- * Obtains slave_id, function, address, and nb from the request.
- *
- * addr_wr and nb_wr are only used for MODBUS_FC_WRITE_AND_READ_REGISTERS
- * */
-int modbus_decompose_request(modbus_t *ctx, const uint8_t *req, int *offset,
-                             int *slave, int *function, uint16_t *addr, int *nb,
-                             uint16_t *addr_wr, int *nb_wr)
-{
-    if (ctx == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    *offset = ctx->backend->header_length;
-    *slave = req[*offset - 1];
-    *function = req[*offset];
-    *addr = (req[*offset + 1] << 8) + req[*offset + 2];
-    *addr_wr = 0x0;
-    *nb_wr = 0x0;
-
-    /* Data are flushed on illegal number of values errors. */
-    switch (*function) {
-    case MODBUS_FC_READ_COILS:
-    case MODBUS_FC_READ_DISCRETE_INPUTS:
-    case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
-    case MODBUS_FC_WRITE_STRING:
-    case MODBUS_FC_READ_HOLDING_REGISTERS:
-    case MODBUS_FC_READ_INPUT_REGISTERS:
-    case MODBUS_FC_WRITE_MULTIPLE_COILS:
-        *nb = (req[*offset + 3] << 8) + req[*offset + 4];
-        break;
-    case MODBUS_FC_WRITE_SINGLE_COIL:
-    case MODBUS_FC_WRITE_SINGLE_REGISTER:
-    case MODBUS_FC_MASK_WRITE_REGISTER:
-        *nb = 1;
-        break;
-    case MODBUS_FC_WRITE_AND_READ_REGISTERS:
-        *nb = (req[*offset + 3] << 8) + req[*offset + 4];
-        *addr_wr = (req[*offset + 5] << 8) + req[*offset + 6];
-        *nb_wr = (req[*offset + 7] << 8) + req[*offset + 8];
-        break;
-    default:
-        *nb = 0;
-        break;
-    }
-
-    return 0;
-}
-
-/**
  * Analyses the request and constructs a response.
  *
  * If an error occurs, this function construct the response
