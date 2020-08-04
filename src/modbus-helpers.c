@@ -1,42 +1,29 @@
-#include "modbus/modbus-helpers.hpp"
+#include "modbus/modbus-helpers.h"
 
-extern "C" {
-    #include "modbus-private.h"
-}
+#include "modbus-private.h"
 
 /******************
  * HELPER FUNCTIONS
  *****************/
 
 void
-print_shim_info(std::string file, std::string function)
+print_shim_info(const char *file, const char *function)
 {
-    int length = file.length() + function.length() + 3;
-    std::cout << display_marker << std::endl;
-    std::cout << file << ":" << function << "()" << std::endl;
-    std::cout << std::string(length, '-') << std::endl;
+    int length = strlen(file) + strlen(function) + 3;
+    printf("%s", display_marker);
+    printf("%s:%s()\n", file, function);
+    for(int i = 0; i < length; ++i) {
+        printf("-");
+    }
+    printf("\n");
 }
-
-// /**
-//  * Print the name of a requested function
-//  * */
-// void
-// print_modbus_function_name(int function)
-// {
-//     std::cout << std::showbase // show the 0x prefix
-//             << std::internal // fill between the prefix and the number
-//             << std::setfill('0') // fill with 0s
-//             << std::hex;
-//     std::cout << ">\tfunction: " << function << " (" <<
-//         get_modbus_function_name(function) << ")" << std::endl;
-// }
 
 /**
  * gets the name of a modbus function
  *
  * modifies READ_COILS to READ_SINGLE_COIL or READ_MULTIPLE_COILS
  * */
-std::string
+char *
 modbus_get_function_name(modbus_t *ctx, const uint8_t *req)
 {
     int *function = (int *)malloc(sizeof(int));
@@ -48,7 +35,7 @@ modbus_get_function_name(modbus_t *ctx, const uint8_t *req)
     int *nb_wr = (int *)malloc(sizeof(int));
 
     modbus_decompose_request(ctx, req, offset, slave_id, function, addr, nb, addr_wr, nb_wr);
-    std::string name = modbus_get_function_name(*function);
+    char *name = modbus_get_function_name(*function);
 
     /* distinguish between reading a single or multiple coils */
     if(name == "MODBUS_FC_READ_COILS") {
@@ -57,12 +44,24 @@ modbus_get_function_name(modbus_t *ctx, const uint8_t *req)
         } else {
             name = "MODBUS_FC_READ_MULTIPLE_COILS";
         }
+    } else if(name == "MODBUS_FC_READ_HOLDING_REGISTERS") {
+        if(*nb == 1) {
+            name = "MODBUS_FC_READ_SINGLE_HOLDING_REGISTER";
+        } else {
+            name = "MODBUS_FC_READ_MULTIPLE_HOLDING_REGISTERS";
+        }
+    } else if(name == "MODBUS_FC_READ_DISCRETE_INPUTS") {
+        if(*nb == 1) {
+            name = "MODBUS_FC_READ_SINGLE_DISCRETE_INPUT";
+        } else {
+            name = "MODBUS_FC_READ_MULTIPLE_DISCRETE_INPUTS";
+        }
     }
 
     return name;
 }
 
-std::string
+char *
 modbus_get_function_name(int function)
 {
     switch(function) {
@@ -195,17 +194,12 @@ print_modbus_decompose_request(modbus_t *ctx, const uint8_t *req)
 
     modbus_decompose_request(ctx, req, offset, slave_id, function, addr, nb, addr_wr, nb_wr);
 
-    std::cout << std::showbase // show the 0x prefix
-              << std::internal // fill between the prefix and the number
-              << std::setfill('0') // fill with 0s
-              << std::hex;
-    std::cout << "decompose request:" << std::endl;
-    std::cout << "> " << "offset:\t\t" << *offset << std::endl;
-    std::cout << "> " << "slave_id:\t\t" << *slave_id << std::endl;
-    std::cout << "> " << "function:\t\t" << *function << " (" <<
-        modbus_get_function_name(*function) << ")" << std::endl;
-    std::cout << "> " << "addr:\t\t\t" << *addr << std::endl;
-    std::cout << "> " << "nb:\t\t\t" << *nb << std::endl;
-    std::cout << "> " << "addr_wr:\t\t" << *addr_wr << std::endl;
-    std::cout << "> " << "nb_wr:\t\t" << *nb_wr << std::endl;
+    printf("decompose request:\n");
+    printf("> offset:\t\t0x%.4X\n", *offset);
+    printf("> slave_id:\t\t0x%.4X\n", *slave_id);
+    printf("> function:\t\t0x%.4X (%s)\n", *function, modbus_get_function_name(*function));
+    printf("> addr:\t\t\t0x%.4X\n", *addr);
+    printf("> nb:\t\t\t0x%.4X\n", *nb);
+    printf("> addr_wr:\t\t0x%.4X\n", *addr_wr);
+    printf("> nb_wr:\t\t0x%.4X\n", *nb_wr);
 }

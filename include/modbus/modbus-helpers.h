@@ -1,28 +1,26 @@
-#ifndef _MODBUS_HELPERS_
-#define _MODBUS_HELPERS_
+#ifndef _MODBUS_HELPERS_H_
+#define _MODBUS_HELPERS_H_
 
-#include <iostream>
-#include <iomanip>
+#include <stdio.h>
 
 /* for Modbus */
-extern "C" {
-    #include "modbus.h"
-}
+#include "modbus.h"
 
 /*********
  * GLOBALS
  ********/
 
-const std::string display_marker(80, '*');
+const char display_marker[] =
+    "****************************************"
+    "****************************************\n";
 
 /******************
  * HELPER FUNCTIONS
  *****************/
 
-void print_shim_info(std::string file, std::string function);
-// void print_modbus_function_name(int function);
-std::string modbus_get_function_name(modbus_t *ctx, const uint8_t *req);
-std::string modbus_get_function_name(int function);
+void print_shim_info(const char *file, const char *function);
+char* modbus_get_function_name(modbus_t *ctx, const uint8_t *req);
+char* modbus_get_function_name(int function);
 void print_mb_mapping(modbus_mapping_t* mb_mapping);
 int modbus_get_function_code(modbus_t *ctx, const uint8_t *req);
 int modbus_decompose_request(modbus_t *ctx, const uint8_t *req, int *offset,
@@ -30,4 +28,4 @@ int modbus_decompose_request(modbus_t *ctx, const uint8_t *req, int *offset,
                              uint16_t *addr_wr, int *nb_wr);
 void print_modbus_decompose_request(modbus_t *ctx, const uint8_t *req);
 
-#endif /* _MODBUS_HELPERS_ */
+#endif /* _MODBUS_HELPERS_H_ */
