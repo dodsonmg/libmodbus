@@ -35,22 +35,22 @@ modbus_get_function_name(modbus_t *ctx, const uint8_t *req)
     int *nb_wr = (int *)malloc(sizeof(int));
 
     modbus_decompose_request(ctx, req, offset, slave_id, function, addr, nb, addr_wr, nb_wr);
-    char *name = modbus_get_function_name(*function);
+    char *name = modbus_get_function_name_from_fc(*function);
 
     /* distinguish between reading a single or multiple coils */
-    if(name == "MODBUS_FC_READ_COILS") {
+    if(strcmp(name, "MODBUS_FC_READ_COILS") == 0) {
         if(*nb == 1) {
             name = "MODBUS_FC_READ_SINGLE_COIL";
         } else {
             name = "MODBUS_FC_READ_MULTIPLE_COILS";
         }
-    } else if(name == "MODBUS_FC_READ_HOLDING_REGISTERS") {
+    } else if(strcmp(name, "MODBUS_FC_READ_HOLDING_REGISTERS") == 0) {
         if(*nb == 1) {
             name = "MODBUS_FC_READ_SINGLE_HOLDING_REGISTER";
         } else {
             name = "MODBUS_FC_READ_MULTIPLE_HOLDING_REGISTERS";
         }
-    } else if(name == "MODBUS_FC_READ_DISCRETE_INPUTS") {
+    } else if(strcmp(name, "MODBUS_FC_READ_DISCRETE_INPUTS") == 0) {
         if(*nb == 1) {
             name = "MODBUS_FC_READ_SINGLE_DISCRETE_INPUT";
         } else {
@@ -62,7 +62,7 @@ modbus_get_function_name(modbus_t *ctx, const uint8_t *req)
 }
 
 char *
-modbus_get_function_name(int function)
+modbus_get_function_name_from_fc(int function)
 {
     switch(function) {
         case MODBUS_FC_READ_COILS:
@@ -197,7 +197,7 @@ print_modbus_decompose_request(modbus_t *ctx, const uint8_t *req)
     printf("decompose request:\n");
     printf("> offset:\t\t0x%.4X\n", *offset);
     printf("> slave_id:\t\t0x%.4X\n", *slave_id);
-    printf("> function:\t\t0x%.4X (%s)\n", *function, modbus_get_function_name(*function));
+    printf("> function:\t\t0x%.4X (%s)\n", *function, modbus_get_function_name_from_fc(*function));
     printf("> addr:\t\t\t0x%.4X\n", *addr);
     printf("> nb:\t\t\t0x%.4X\n", *nb);
     printf("> addr_wr:\t\t0x%.4X\n", *addr_wr);

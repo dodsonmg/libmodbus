@@ -12,7 +12,7 @@ add_library(modbus SHARED
             src/modbus-data.c
             src/modbus-rtu.c
             src/modbus-tcp.c
-            src/modbus-helpers.cpp
+            src/modbus-helpers.c
             )
 
 target_include_directories(modbus PUBLIC
