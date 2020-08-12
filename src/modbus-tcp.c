@@ -30,19 +30,21 @@
 # define SHUT_RDWR 2
 # define close closesocket
 #else
-# include <sys/socket.h>
-# include <sys/ioctl.h>
+/* TEMP REMOVAL: To support FreeRTOS port development */
+// # include <sys/socket.h>
+// # include <sys/ioctl.h>
 
 #if defined(__OpenBSD__) || (defined(__FreeBSD__) && __FreeBSD__ < 5)
 # define OS_BSD
 # include <netinet/in_systm.h>
 #endif
 
-# include <netinet/in.h>
-# include <netinet/ip.h>
-# include <netinet/tcp.h>
-# include <arpa/inet.h>
-# include <netdb.h>
+/* TEMP REMOVAL: To support FreeRTOS port development */
+// # include <netinet/in.h>
+// # include <netinet/ip.h>
+// # include <netinet/tcp.h>
+// # include <arpa/inet.h>
+// # include <netdb.h>
 #endif
 
 #if !defined(MSG_NOSIGNAL)
@@ -165,11 +167,13 @@ static int _modbus_tcp_send_msg_pre(uint8_t *req, int req_length)
 
 static ssize_t _modbus_tcp_send(modbus_t *ctx, const uint8_t *req, int req_length)
 {
-    /* MSG_NOSIGNAL
-       Requests not to send SIGPIPE on errors on stream oriented
-       sockets when the other end breaks the connection.  The EPIPE
-       error is still returned. */
-    return send(ctx->s, (const char *)req, req_length, MSG_NOSIGNAL);
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+
+    // /* MSG_NOSIGNAL
+    //    Requests not to send SIGPIPE on errors on stream oriented
+    //    sockets when the other end breaks the connection.  The EPIPE
+    //    error is still returned. */
+    // return send(ctx->s, (const char *)req, req_length, MSG_NOSIGNAL);
 }
 
 static int _modbus_tcp_receive(modbus_t *ctx, uint8_t *req) {
@@ -177,7 +181,8 @@ static int _modbus_tcp_receive(modbus_t *ctx, uint8_t *req) {
 }
 
 static ssize_t _modbus_tcp_recv(modbus_t *ctx, uint8_t *rsp, int rsp_length) {
-    return recv(ctx->s, (char *)rsp, rsp_length, 0);
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    // return recv(ctx->s, (char *)rsp, rsp_length, 0);
 }
 
 static int _modbus_tcp_check_integrity(modbus_t *ctx, uint8_t *msg, const int msg_length)
@@ -216,86 +221,89 @@ static int _modbus_tcp_set_ipv4_options(int s)
     int rc;
     int option;
 
-    /* Set the TCP no delay flag */
-    /* SOL_TCP = IPPROTO_TCP */
-    option = 1;
-    rc = setsockopt(s, IPPROTO_TCP, TCP_NODELAY,
-                    (const void *)&option, sizeof(int));
-    if (rc == -1) {
-        return -1;
-    }
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    rc = -1;  // added to defeat any accidental calls
 
-    /* If the OS does not offer SOCK_NONBLOCK, fall back to setting FIONBIO to
-     * make sockets non-blocking */
-    /* Do not care about the return value, this is optional */
-#if !defined(SOCK_NONBLOCK) && defined(FIONBIO)
-#ifdef OS_WIN32
-    {
-        /* Setting FIONBIO expects an unsigned long according to MSDN */
-        u_long loption = 1;
-        ioctlsocket(s, FIONBIO, &loption);
-    }
-#else
-    option = 1;
-    ioctl(s, FIONBIO, &option);
-#endif
-#endif
+//     /* Set the TCP no delay flag */
+//     /* SOL_TCP = IPPROTO_TCP */
+//     option = 1;
+//     rc = setsockopt(s, IPPROTO_TCP, TCP_NODELAY,
+//                     (const void *)&option, sizeof(int));
+//     if (rc == -1) {
+//         return -1;
+//     }
 
-#ifndef OS_WIN32
-    /**
-     * Cygwin defines IPTOS_LOWDELAY but can't handle that flag so it's
-     * necessary to workaround that problem.
-     **/
-    /* Set the IP low delay option */
-    option = IPTOS_LOWDELAY;
-    rc = setsockopt(s, IPPROTO_IP, IP_TOS,
-                    (const void *)&option, sizeof(int));
-    if (rc == -1) {
-        return -1;
-    }
-#endif
+//     /* If the OS does not offer SOCK_NONBLOCK, fall back to setting FIONBIO to
+//      * make sockets non-blocking */
+//     /* Do not care about the return value, this is optional */
+// #if !defined(SOCK_NONBLOCK) && defined(FIONBIO)
+// #ifdef OS_WIN32
+//     {
+//         /* Setting FIONBIO expects an unsigned long according to MSDN */
+//         u_long loption = 1;
+//         ioctlsocket(s, FIONBIO, &loption);
+//     }
+// #else
+//     option = 1;
+//     ioctl(s, FIONBIO, &option);
+// #endif
+// #endif
 
-    return 0;
-}
+// #ifndef OS_WIN32
+//     /**
+//      * Cygwin defines IPTOS_LOWDELAY but can't handle that flag so it's
+//      * necessary to workaround that problem.
+//      **/
+//     /* Set the IP low delay option */
+//     option = IPTOS_LOWDELAY;
+//     rc = setsockopt(s, IPPROTO_IP, IP_TOS,
+//                     (const void *)&option, sizeof(int));
+//     if (rc == -1) {
+//         return -1;
+//     }
+// #endif
 
-static int _connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen,
-                    const struct timeval *ro_tv)
-{
-    int rc = connect(sockfd, addr, addrlen);
+//     return 0;
+// }
 
-#ifdef OS_WIN32
-    int wsaError = 0;
-    if (rc == -1) {
-        wsaError = WSAGetLastError();
-    }
+// static int _connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen,
+//                     const struct timeval *ro_tv)
+// {
+//     int rc = connect(sockfd, addr, addrlen);
 
-    if (wsaError == WSAEWOULDBLOCK || wsaError == WSAEINPROGRESS) {
-#else
-    if (rc == -1 && errno == EINPROGRESS) {
-#endif
-        fd_set wset;
-        int optval;
-        socklen_t optlen = sizeof(optval);
-        struct timeval tv = *ro_tv;
+// #ifdef OS_WIN32
+//     int wsaError = 0;
+//     if (rc == -1) {
+//         wsaError = WSAGetLastError();
+//     }
 
-        /* Wait to be available in writing */
-        FD_ZERO(&wset);
-        FD_SET(sockfd, &wset);
-        rc = select(sockfd + 1, NULL, &wset, NULL, &tv);
-        if (rc <= 0) {
-            /* Timeout or fail */
-            return -1;
-        }
+//     if (wsaError == WSAEWOULDBLOCK || wsaError == WSAEINPROGRESS) {
+// #else
+//     if (rc == -1 && errno == EINPROGRESS) {
+// #endif
+//         fd_set wset;
+//         int optval;
+//         socklen_t optlen = sizeof(optval);
+//         struct timeval tv = *ro_tv;
 
-        /* The connection is established if SO_ERROR and optval are set to 0 */
-        rc = getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *)&optval, &optlen);
-        if (rc == 0 && optval == 0) {
-            return 0;
-        } else {
-            errno = ECONNREFUSED;
-            return -1;
-        }
-    }
+//         /* Wait to be available in writing */
+//         FD_ZERO(&wset);
+//         FD_SET(sockfd, &wset);
+//         rc = select(sockfd + 1, NULL, &wset, NULL, &tv);
+//         if (rc <= 0) {
+//             /* Timeout or fail */
+//             return -1;
+//         }
+
+//         /* The connection is established if SO_ERROR and optval are set to 0 */
+//         rc = getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *)&optval, &optlen);
+//         if (rc == 0 && optval == 0) {
+//             return 0;
+//         } else {
+//             errno = ECONNREFUSED;
+//             return -1;
+//         }
+//     }
     return rc;
 }
 
@@ -303,140 +311,151 @@ static int _connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen,
 static int _modbus_tcp_connect(modbus_t *ctx)
 {
     int rc;
-    /* Specialized version of sockaddr for Internet socket address (same size) */
-    struct sockaddr_in addr;
-    modbus_tcp_t *ctx_tcp = ctx->backend_data;
-    int flags = SOCK_STREAM;
 
-#ifdef OS_WIN32
-    if (_modbus_tcp_init_win32() == -1) {
-        return -1;
-    }
-#endif
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    rc = -1;  // added to defeat any accidental calls
+    return rc;
 
-#ifdef SOCK_CLOEXEC
-    flags |= SOCK_CLOEXEC;
-#endif
+//     /* Specialized version of sockaddr for Internet socket address (same size) */
+//     struct sockaddr_in addr;
+//     modbus_tcp_t *ctx_tcp = ctx->backend_data;
+//     int flags = SOCK_STREAM;
 
-#ifdef SOCK_NONBLOCK
-    flags |= SOCK_NONBLOCK;
-#endif
+// #ifdef OS_WIN32
+//     if (_modbus_tcp_init_win32() == -1) {
+//         return -1;
+//     }
+// #endif
 
-    ctx->s = socket(PF_INET, flags, 0);
-    if (ctx->s == -1) {
-        return -1;
-    }
+// #ifdef SOCK_CLOEXEC
+//     flags |= SOCK_CLOEXEC;
+// #endif
 
-    rc = _modbus_tcp_set_ipv4_options(ctx->s);
-    if (rc == -1) {
-        close(ctx->s);
-        ctx->s = -1;
-        return -1;
-    }
+// #ifdef SOCK_NONBLOCK
+//     flags |= SOCK_NONBLOCK;
+// #endif
 
-    if (ctx->debug) {
-        printf("Connecting to %s:%d\n", ctx_tcp->ip, ctx_tcp->port);
-    }
+//     ctx->s = socket(PF_INET, flags, 0);
+//     if (ctx->s == -1) {
+//         return -1;
+//     }
 
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(ctx_tcp->port);
-    addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
-    rc = _connect(ctx->s, (struct sockaddr *)&addr, sizeof(addr), &ctx->response_timeout);
-    if (rc == -1) {
-        close(ctx->s);
-        ctx->s = -1;
-        return -1;
-    }
+//     rc = _modbus_tcp_set_ipv4_options(ctx->s);
+//     if (rc == -1) {
+//         close(ctx->s);
+//         ctx->s = -1;
+//         return -1;
+//     }
 
-    return 0;
+//     if (ctx->debug) {
+//         printf("Connecting to %s:%d\n", ctx_tcp->ip, ctx_tcp->port);
+//     }
+
+//     addr.sin_family = AF_INET;
+//     addr.sin_port = htons(ctx_tcp->port);
+//     addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
+//     rc = _connect(ctx->s, (struct sockaddr *)&addr, sizeof(addr), &ctx->response_timeout);
+//     if (rc == -1) {
+//         close(ctx->s);
+//         ctx->s = -1;
+//         return -1;
+//     }
+
+//     return 0;
 }
 
 /* Establishes a modbus TCP PI connection with a Modbus server. */
 static int _modbus_tcp_pi_connect(modbus_t *ctx)
 {
     int rc;
-    struct addrinfo *ai_list;
-    struct addrinfo *ai_ptr;
-    struct addrinfo ai_hints;
-    modbus_tcp_pi_t *ctx_tcp_pi = ctx->backend_data;
 
-#ifdef OS_WIN32
-    if (_modbus_tcp_init_win32() == -1) {
-        return -1;
-    }
-#endif
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    rc = -1;  // added to defeat any accidental calls
+    return rc;
 
-    memset(&ai_hints, 0, sizeof(ai_hints));
-#ifdef AI_ADDRCONFIG
-    ai_hints.ai_flags |= AI_ADDRCONFIG;
-#endif
-    ai_hints.ai_family = AF_UNSPEC;
-    ai_hints.ai_socktype = SOCK_STREAM;
-    ai_hints.ai_addr = NULL;
-    ai_hints.ai_canonname = NULL;
-    ai_hints.ai_next = NULL;
+//     struct addrinfo *ai_list;
+//     struct addrinfo *ai_ptr;
+//     struct addrinfo ai_hints;
+//     modbus_tcp_pi_t *ctx_tcp_pi = ctx->backend_data;
 
-    ai_list = NULL;
-    rc = getaddrinfo(ctx_tcp_pi->node, ctx_tcp_pi->service,
-                     &ai_hints, &ai_list);
-    if (rc != 0) {
-        if (ctx->debug) {
-            fprintf(stderr, "Error returned by getaddrinfo: %s\n", gai_strerror(rc));
-        }
-        errno = ECONNREFUSED;
-        return -1;
-    }
+// #ifdef OS_WIN32
+//     if (_modbus_tcp_init_win32() == -1) {
+//         return -1;
+//     }
+// #endif
 
-    for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next) {
-        int flags = ai_ptr->ai_socktype;
-        int s;
+//     memset(&ai_hints, 0, sizeof(ai_hints));
+// #ifdef AI_ADDRCONFIG
+//     ai_hints.ai_flags |= AI_ADDRCONFIG;
+// #endif
+//     ai_hints.ai_family = AF_UNSPEC;
+//     ai_hints.ai_socktype = SOCK_STREAM;
+//     ai_hints.ai_addr = NULL;
+//     ai_hints.ai_canonname = NULL;
+//     ai_hints.ai_next = NULL;
 
-#ifdef SOCK_CLOEXEC
-        flags |= SOCK_CLOEXEC;
-#endif
+//     ai_list = NULL;
+//     rc = getaddrinfo(ctx_tcp_pi->node, ctx_tcp_pi->service,
+//                      &ai_hints, &ai_list);
+//     if (rc != 0) {
+//         if (ctx->debug) {
+//             fprintf(stderr, "Error returned by getaddrinfo: %s\n", gai_strerror(rc));
+//         }
+//         errno = ECONNREFUSED;
+//         return -1;
+//     }
 
-#ifdef SOCK_NONBLOCK
-        flags |= SOCK_NONBLOCK;
-#endif
+//     for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next) {
+//         int flags = ai_ptr->ai_socktype;
+//         int s;
 
-        s = socket(ai_ptr->ai_family, flags, ai_ptr->ai_protocol);
-        if (s < 0)
-            continue;
+// #ifdef SOCK_CLOEXEC
+//         flags |= SOCK_CLOEXEC;
+// #endif
 
-        if (ai_ptr->ai_family == AF_INET)
-            _modbus_tcp_set_ipv4_options(s);
+// #ifdef SOCK_NONBLOCK
+//         flags |= SOCK_NONBLOCK;
+// #endif
 
-        if (ctx->debug) {
-            printf("Connecting to [%s]:%s\n", ctx_tcp_pi->node, ctx_tcp_pi->service);
-        }
+//         s = socket(ai_ptr->ai_family, flags, ai_ptr->ai_protocol);
+//         if (s < 0)
+//             continue;
 
-        rc = _connect(s, ai_ptr->ai_addr, ai_ptr->ai_addrlen, &ctx->response_timeout);
-        if (rc == -1) {
-            close(s);
-            continue;
-        }
+//         if (ai_ptr->ai_family == AF_INET)
+//             _modbus_tcp_set_ipv4_options(s);
 
-        ctx->s = s;
-        break;
-    }
+//         if (ctx->debug) {
+//             printf("Connecting to [%s]:%s\n", ctx_tcp_pi->node, ctx_tcp_pi->service);
+//         }
 
-    freeaddrinfo(ai_list);
+//         rc = _connect(s, ai_ptr->ai_addr, ai_ptr->ai_addrlen, &ctx->response_timeout);
+//         if (rc == -1) {
+//             close(s);
+//             continue;
+//         }
 
-    if (ctx->s < 0) {
-        return -1;
-    }
+//         ctx->s = s;
+//         break;
+//     }
 
-    return 0;
+//     freeaddrinfo(ai_list);
+
+//     if (ctx->s < 0) {
+//         return -1;
+//     }
+
+//     return 0;
 }
 
 /* Closes the network connection and socket in TCP mode */
 static void _modbus_tcp_close(modbus_t *ctx)
 {
-    if (ctx->s != -1) {
-        shutdown(ctx->s, SHUT_RDWR);
-        close(ctx->s);
-        ctx->s = -1;
-    }
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    // if (ctx->s != -1) {
+    //     shutdown(ctx->s, SHUT_RDWR);
+    //     close(ctx->s);
+    //     ctx->s = -1;
+    // }
 }
 
 static int _modbus_tcp_flush(modbus_t *ctx)
@@ -444,299 +463,324 @@ static int _modbus_tcp_flush(modbus_t *ctx)
     int rc;
     int rc_sum = 0;
 
-    do {
-        /* Extract the garbage from the socket */
-        char devnull[MODBUS_TCP_MAX_ADU_LENGTH];
-#ifndef OS_WIN32
-        rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, MSG_DONTWAIT);
-#else
-        /* On Win32, it's a bit more complicated to not wait */
-        fd_set rset;
-        struct timeval tv;
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    rc = -1;  // added to defeat any accidental calls
+    return rc;
 
-        tv.tv_sec = 0;
-        tv.tv_usec = 0;
-        FD_ZERO(&rset);
-        FD_SET(ctx->s, &rset);
-        rc = select(ctx->s+1, &rset, NULL, NULL, &tv);
-        if (rc == -1) {
-            return -1;
-        }
+//     do {
+//         /* Extract the garbage from the socket */
+//         char devnull[MODBUS_TCP_MAX_ADU_LENGTH];
+// #ifndef OS_WIN32
+//         rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, MSG_DONTWAIT);
+// #else
+//         /* On Win32, it's a bit more complicated to not wait */
+//         fd_set rset;
+//         struct timeval tv;
 
-        if (rc == 1) {
-            /* There is data to flush */
-            rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, 0);
-        }
-#endif
-        if (rc > 0) {
-            rc_sum += rc;
-        }
-    } while (rc == MODBUS_TCP_MAX_ADU_LENGTH);
+//         tv.tv_sec = 0;
+//         tv.tv_usec = 0;
+//         FD_ZERO(&rset);
+//         FD_SET(ctx->s, &rset);
+//         rc = select(ctx->s+1, &rset, NULL, NULL, &tv);
+//         if (rc == -1) {
+//             return -1;
+//         }
 
-    return rc_sum;
+//         if (rc == 1) {
+//             /* There is data to flush */
+//             rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, 0);
+//         }
+// #endif
+//         if (rc > 0) {
+//             rc_sum += rc;
+//         }
+//     } while (rc == MODBUS_TCP_MAX_ADU_LENGTH);
+
+//     return rc_sum;
 }
 
 /* Listens for any request from one or many modbus masters in TCP */
 int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
 {
-    int new_s;
-    int enable;
-    int flags;
-    struct sockaddr_in addr;
-    modbus_tcp_t *ctx_tcp;
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    int rc = -1;  // added to defeat any accidental calls
+    return rc;
 
-    if (ctx == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
+//     int new_s;
+//     int enable;
+//     int flags;
+//     struct sockaddr_in addr;
+//     modbus_tcp_t *ctx_tcp;
 
-    ctx_tcp = ctx->backend_data;
+//     if (ctx == NULL) {
+//         errno = EINVAL;
+//         return -1;
+//     }
 
-#ifdef OS_WIN32
-    if (_modbus_tcp_init_win32() == -1) {
-        return -1;
-    }
-#endif
+//     ctx_tcp = ctx->backend_data;
 
-    flags = SOCK_STREAM;
+// #ifdef OS_WIN32
+//     if (_modbus_tcp_init_win32() == -1) {
+//         return -1;
+//     }
+// #endif
 
-#ifdef SOCK_CLOEXEC
-    flags |= SOCK_CLOEXEC;
-#endif
+//     flags = SOCK_STREAM;
 
-    new_s = socket(PF_INET, flags, IPPROTO_TCP);
-    if (new_s == -1) {
-        return -1;
-    }
+// #ifdef SOCK_CLOEXEC
+//     flags |= SOCK_CLOEXEC;
+// #endif
 
-    enable = 1;
-    if (setsockopt(new_s, SOL_SOCKET, SO_REUSEADDR,
-                   (char *)&enable, sizeof(enable)) == -1) {
-        close(new_s);
-        return -1;
-    }
+//     new_s = socket(PF_INET, flags, IPPROTO_TCP);
+//     if (new_s == -1) {
+//         return -1;
+//     }
 
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    /* If the modbus port is < to 1024, we need the setuid root. */
-    addr.sin_port = htons(ctx_tcp->port);
-    if (ctx_tcp->ip[0] == '0') {
-        /* Listen any addresses */
-        addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    } else {
-        /* Listen only specified IP address */
-        addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
-    }
-    if (bind(new_s, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-        close(new_s);
-        return -1;
-    }
+//     enable = 1;
+//     if (setsockopt(new_s, SOL_SOCKET, SO_REUSEADDR,
+//                    (char *)&enable, sizeof(enable)) == -1) {
+//         close(new_s);
+//         return -1;
+//     }
 
-    if (listen(new_s, nb_connection) == -1) {
-        close(new_s);
-        return -1;
-    }
+//     memset(&addr, 0, sizeof(addr));
+//     addr.sin_family = AF_INET;
+//     /* If the modbus port is < to 1024, we need the setuid root. */
+//     addr.sin_port = htons(ctx_tcp->port);
+//     if (ctx_tcp->ip[0] == '0') {
+//         /* Listen any addresses */
+//         addr.sin_addr.s_addr = htonl(INADDR_ANY);
+//     } else {
+//         /* Listen only specified IP address */
+//         addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
+//     }
+//     if (bind(new_s, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+//         close(new_s);
+//         return -1;
+//     }
 
-    return new_s;
+//     if (listen(new_s, nb_connection) == -1) {
+//         close(new_s);
+//         return -1;
+//     }
+
+//     return new_s;
 }
 
 int modbus_tcp_pi_listen(modbus_t *ctx, int nb_connection)
 {
     int rc;
-    struct addrinfo *ai_list;
-    struct addrinfo *ai_ptr;
-    struct addrinfo ai_hints;
-    const char *node;
-    const char *service;
-    int new_s;
-    modbus_tcp_pi_t *ctx_tcp_pi;
 
-    if (ctx == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    rc = -1;  // added to defeat any accidental calls
+    return rc;
 
-    ctx_tcp_pi = ctx->backend_data;
+//     struct addrinfo *ai_list;
+//     struct addrinfo *ai_ptr;
+//     struct addrinfo ai_hints;
+//     const char *node;
+//     const char *service;
+//     int new_s;
+//     modbus_tcp_pi_t *ctx_tcp_pi;
 
-#ifdef OS_WIN32
-    if (_modbus_tcp_init_win32() == -1) {
-        return -1;
-    }
-#endif
+//     if (ctx == NULL) {
+//         errno = EINVAL;
+//         return -1;
+//     }
 
-    if (ctx_tcp_pi->node[0] == 0) {
-        node = NULL; /* == any */
-    } else {
-        node = ctx_tcp_pi->node;
-    }
+//     ctx_tcp_pi = ctx->backend_data;
 
-    if (ctx_tcp_pi->service[0] == 0) {
-        service = "502";
-    } else {
-        service = ctx_tcp_pi->service;
-    }
+// #ifdef OS_WIN32
+//     if (_modbus_tcp_init_win32() == -1) {
+//         return -1;
+//     }
+// #endif
 
-    memset(&ai_hints, 0, sizeof (ai_hints));
-    /* If node is not NULL, than the AI_PASSIVE flag is ignored. */
-    ai_hints.ai_flags |= AI_PASSIVE;
-#ifdef AI_ADDRCONFIG
-    ai_hints.ai_flags |= AI_ADDRCONFIG;
-#endif
-    ai_hints.ai_family = AF_UNSPEC;
-    ai_hints.ai_socktype = SOCK_STREAM;
-    ai_hints.ai_addr = NULL;
-    ai_hints.ai_canonname = NULL;
-    ai_hints.ai_next = NULL;
+//     if (ctx_tcp_pi->node[0] == 0) {
+//         node = NULL; /* == any */
+//     } else {
+//         node = ctx_tcp_pi->node;
+//     }
 
-    ai_list = NULL;
-    rc = getaddrinfo(node, service, &ai_hints, &ai_list);
-    if (rc != 0) {
-        if (ctx->debug) {
-            fprintf(stderr, "Error returned by getaddrinfo: %s\n", gai_strerror(rc));
-        }
-        errno = ECONNREFUSED;
-        return -1;
-    }
+//     if (ctx_tcp_pi->service[0] == 0) {
+//         service = "502";
+//     } else {
+//         service = ctx_tcp_pi->service;
+//     }
 
-    new_s = -1;
-    for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next) {
-        int flags = ai_ptr->ai_socktype;
-        int s;
+//     memset(&ai_hints, 0, sizeof (ai_hints));
+//     /* If node is not NULL, than the AI_PASSIVE flag is ignored. */
+//     ai_hints.ai_flags |= AI_PASSIVE;
+// #ifdef AI_ADDRCONFIG
+//     ai_hints.ai_flags |= AI_ADDRCONFIG;
+// #endif
+//     ai_hints.ai_family = AF_UNSPEC;
+//     ai_hints.ai_socktype = SOCK_STREAM;
+//     ai_hints.ai_addr = NULL;
+//     ai_hints.ai_canonname = NULL;
+//     ai_hints.ai_next = NULL;
 
-#ifdef SOCK_CLOEXEC
-        flags |= SOCK_CLOEXEC;
-#endif
+//     ai_list = NULL;
+//     rc = getaddrinfo(node, service, &ai_hints, &ai_list);
+//     if (rc != 0) {
+//         if (ctx->debug) {
+//             fprintf(stderr, "Error returned by getaddrinfo: %s\n", gai_strerror(rc));
+//         }
+//         errno = ECONNREFUSED;
+//         return -1;
+//     }
 
-        s = socket(ai_ptr->ai_family, flags, ai_ptr->ai_protocol);
-        if (s < 0) {
-            if (ctx->debug) {
-                perror("socket");
-            }
-            continue;
-        } else {
-            int enable = 1;
-            rc = setsockopt(s, SOL_SOCKET, SO_REUSEADDR,
-                            (void *)&enable, sizeof (enable));
-            if (rc != 0) {
-                close(s);
-                if (ctx->debug) {
-                    perror("setsockopt");
-                }
-                continue;
-            }
-        }
+//     new_s = -1;
+//     for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next) {
+//         int flags = ai_ptr->ai_socktype;
+//         int s;
 
-        rc = bind(s, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
-        if (rc != 0) {
-            close(s);
-            if (ctx->debug) {
-                perror("bind");
-            }
-            continue;
-        }
+// #ifdef SOCK_CLOEXEC
+//         flags |= SOCK_CLOEXEC;
+// #endif
 
-        rc = listen(s, nb_connection);
-        if (rc != 0) {
-            close(s);
-            if (ctx->debug) {
-                perror("listen");
-            }
-            continue;
-        }
+//         s = socket(ai_ptr->ai_family, flags, ai_ptr->ai_protocol);
+//         if (s < 0) {
+//             if (ctx->debug) {
+//                 perror("socket");
+//             }
+//             continue;
+//         } else {
+//             int enable = 1;
+//             rc = setsockopt(s, SOL_SOCKET, SO_REUSEADDR,
+//                             (void *)&enable, sizeof (enable));
+//             if (rc != 0) {
+//                 close(s);
+//                 if (ctx->debug) {
+//                     perror("setsockopt");
+//                 }
+//                 continue;
+//             }
+//         }
 
-        new_s = s;
-        break;
-    }
-    freeaddrinfo(ai_list);
+//         rc = bind(s, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
+//         if (rc != 0) {
+//             close(s);
+//             if (ctx->debug) {
+//                 perror("bind");
+//             }
+//             continue;
+//         }
 
-    if (new_s < 0) {
-        return -1;
-    }
+//         rc = listen(s, nb_connection);
+//         if (rc != 0) {
+//             close(s);
+//             if (ctx->debug) {
+//                 perror("listen");
+//             }
+//             continue;
+//         }
 
-    return new_s;
+//         new_s = s;
+//         break;
+//     }
+//     freeaddrinfo(ai_list);
+
+//     if (new_s < 0) {
+//         return -1;
+//     }
+
+//     return new_s;
 }
 
 int modbus_tcp_accept(modbus_t *ctx, int *s)
 {
-    struct sockaddr_in addr;
-    socklen_t addrlen;
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    int rc = -1;  // added to defeat any accidental calls
+    return rc;
 
-    if (ctx == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
+//     struct sockaddr_in addr;
+//     socklen_t addrlen;
 
-    addrlen = sizeof(addr);
-#ifdef HAVE_ACCEPT4
-    /* Inherit socket flags and use accept4 call */
-    ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
-#else
-    ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
-#endif
+//     if (ctx == NULL) {
+//         errno = EINVAL;
+//         return -1;
+//     }
 
-    if (ctx->s == -1) {
-        return -1;
-    }
+//     addrlen = sizeof(addr);
+// #ifdef HAVE_ACCEPT4
+//     /* Inherit socket flags and use accept4 call */
+//     ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
+// #else
+//     ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
+// #endif
 
-    if (ctx->debug) {
-        printf("The client connection from %s is accepted\n",
-               inet_ntoa(addr.sin_addr));
-    }
+//     if (ctx->s == -1) {
+//         return -1;
+//     }
 
-    return ctx->s;
+//     if (ctx->debug) {
+//         printf("The client connection from %s is accepted\n",
+//                inet_ntoa(addr.sin_addr));
+//     }
+
+//     return ctx->s;
 }
 
 int modbus_tcp_pi_accept(modbus_t *ctx, int *s)
 {
-    struct sockaddr_storage addr;
-    socklen_t addrlen;
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    int rc = -1;  // added to defeat any accidental calls
+    return rc;
 
-    if (ctx == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
+//     struct sockaddr_storage addr;
+//     socklen_t addrlen;
 
-    addrlen = sizeof(addr);
-#ifdef HAVE_ACCEPT4
-    /* Inherit socket flags and use accept4 call */
-    ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
-#else
-    ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
-#endif
+//     if (ctx == NULL) {
+//         errno = EINVAL;
+//         return -1;
+//     }
 
-    if (ctx->s == -1) {
-        return -1;
-    }
+//     addrlen = sizeof(addr);
+// #ifdef HAVE_ACCEPT4
+//     /* Inherit socket flags and use accept4 call */
+//     ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
+// #else
+//     ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
+// #endif
 
-    if (ctx->debug) {
-        printf("The client connection is accepted.\n");
-    }
+//     if (ctx->s == -1) {
+//         return -1;
+//     }
 
-    return ctx->s;
+//     if (ctx->debug) {
+//         printf("The client connection is accepted.\n");
+//     }
+
+//     return ctx->s;
 }
 
 static int _modbus_tcp_select(modbus_t *ctx, fd_set *rset, struct timeval *tv, int length_to_read)
 {
-    int s_rc;
-    while ((s_rc = select(ctx->s+1, rset, NULL, NULL, tv)) == -1) {
-        if (errno == EINTR) {
-            if (ctx->debug) {
-                fprintf(stderr, "A non blocked signal was caught\n");
-            }
-            /* Necessary after an error */
-            FD_ZERO(rset);
-            FD_SET(ctx->s, rset);
-        } else {
-            return -1;
-        }
-    }
+    /* TEMP REMOVAL: To support FreeRTOS port development */
+    int rc = -1;  // added to defeat any accidental calls
+    return rc;
 
-    if (s_rc == 0) {
-        errno = ETIMEDOUT;
-        return -1;
-    }
+//     int s_rc;
+//     while ((s_rc = select(ctx->s+1, rset, NULL, NULL, tv)) == -1) {
+//         if (errno == EINTR) {
+//             if (ctx->debug) {
+//                 fprintf(stderr, "A non blocked signal was caught\n");
+//             }
+//             /* Necessary after an error */
+//             FD_ZERO(rset);
+//             FD_SET(ctx->s, rset);
+//         } else {
+//             return -1;
+//         }
+//     }
 
-    return s_rc;
+//     if (s_rc == 0) {
+//         errno = ETIMEDOUT;
+//         return -1;
+//     }
+
+//     return s_rc;
 }
 
 static void _modbus_tcp_free(modbus_t *ctx) {
