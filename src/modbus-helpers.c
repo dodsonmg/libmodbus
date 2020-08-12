@@ -10,7 +10,7 @@ void
 print_shim_info(const char *file, const char *function)
 {
     int length = strlen(file) + strlen(function) + 3;
-    printf("%s", display_marker);
+    printf("%s", DISPLAY_MARKER);
     printf("%s:%s()\n", file, function);
     for(int i = 0; i < length; ++i) {
         printf("-");
