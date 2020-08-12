@@ -26,13 +26,13 @@ print_shim_info(const char *file, const char *function)
 char *
 modbus_get_function_name(modbus_t *ctx, const uint8_t *req)
 {
-    int *function = (int *)malloc(sizeof(int));
-    int *offset = (int *)malloc(sizeof(int));
-    int *slave_id = (int *)malloc(sizeof(int));
-    uint16_t *addr = (uint16_t *)malloc(sizeof(uint16_t));
-    int *nb = (int *)malloc(sizeof(int));
-    uint16_t *addr_wr = (uint16_t *)malloc(sizeof(uint16_t));
-    int *nb_wr = (int *)malloc(sizeof(int));
+    int *function = (int *)pvPortMalloc(sizeof(int));
+    int *offset = (int *)pvPortMalloc(sizeof(int));
+    int *slave_id = (int *)pvPortMalloc(sizeof(int));
+    uint16_t *addr = (uint16_t *)pvPortMalloc(sizeof(uint16_t));
+    int *nb = (int *)pvPortMalloc(sizeof(int));
+    uint16_t *addr_wr = (uint16_t *)pvPortMalloc(sizeof(uint16_t));
+    int *nb_wr = (int *)pvPortMalloc(sizeof(int));
 
     modbus_decompose_request(ctx, req, offset, slave_id, function, addr, nb, addr_wr, nb_wr);
     char *name = modbus_get_function_name_from_fc(*function);
@@ -184,13 +184,13 @@ modbus_decompose_request(modbus_t *ctx, const uint8_t *req, int *offset,
 void
 print_modbus_decompose_request(modbus_t *ctx, const uint8_t *req)
 {
-    int *function = (int *)malloc(sizeof(int));
-    int *offset = (int *)malloc(sizeof(int));
-    int *slave_id = (int *)malloc(sizeof(int));
-    uint16_t *addr = (uint16_t *)malloc(sizeof(uint16_t));
-    int *nb = (int *)malloc(sizeof(int));
-    uint16_t *addr_wr = (uint16_t *)malloc(sizeof(uint16_t));
-    int *nb_wr = (int *)malloc(sizeof(int));
+    int *function = (int *)pvPortMalloc(sizeof(int));
+    int *offset = (int *)pvPortMalloc(sizeof(int));
+    int *slave_id = (int *)pvPortMalloc(sizeof(int));
+    uint16_t *addr = (uint16_t *)pvPortMalloc(sizeof(uint16_t));
+    int *nb = (int *)pvPortMalloc(sizeof(int));
+    uint16_t *addr_wr = (uint16_t *)pvPortMalloc(sizeof(uint16_t));
+    int *nb_wr = (int *)pvPortMalloc(sizeof(int));
 
     modbus_decompose_request(ctx, req, offset, slave_id, function, addr, nb, addr_wr, nb_wr);
 

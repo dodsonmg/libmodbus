@@ -28,6 +28,9 @@
 #include "cheri_helper.h"
 #endif // __has_feature(capabilities)
 
+/* For FreeRTOS */
+#include "FreeRTOS.h"
+
 #if defined(_MSC_VER)
 # if defined(DLLBUILD)
 /* define DLLBUILD when building the DLL */

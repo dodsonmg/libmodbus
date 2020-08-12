@@ -1189,11 +1189,11 @@ static int _modbus_rtu_select(modbus_t *ctx, fd_set *rset,
 
 static void _modbus_rtu_free(modbus_t *ctx) {
     if (ctx->backend_data) {
-        free(((modbus_rtu_t *)ctx->backend_data)->device);
-        free(ctx->backend_data);
+        vPortFree(((modbus_rtu_t *)ctx->backend_data)->device);
+        vPortFree(ctx->backend_data);
     }
 
-    free(ctx);
+    vPortFree(ctx);
 }
 
 const modbus_backend_t _modbus_rtu_backend = {
@@ -1239,14 +1239,14 @@ modbus_t* modbus_new_rtu(const char *device,
         return NULL;
     }
 
-    ctx = (modbus_t *)malloc(sizeof(modbus_t));
+    ctx = (modbus_t *)pvPortMalloc(sizeof(modbus_t));
     if (ctx == NULL) {
         return NULL;
     }
 
     _modbus_init_common(ctx);
     ctx->backend = &_modbus_rtu_backend;
-    ctx->backend_data = (modbus_rtu_t *)malloc(sizeof(modbus_rtu_t));
+    ctx->backend_data = (modbus_rtu_t *)pvPortMalloc(sizeof(modbus_rtu_t));
     if (ctx->backend_data == NULL) {
         modbus_free(ctx);
         errno = ENOMEM;
@@ -1255,7 +1255,7 @@ modbus_t* modbus_new_rtu(const char *device,
     ctx_rtu = (modbus_rtu_t *)ctx->backend_data;
 
     /* Device name and \0 */
-    ctx_rtu->device = (char *)malloc((strlen(device) + 1) * sizeof(char));
+    ctx_rtu->device = (char *)pvPortMalloc((strlen(device) + 1) * sizeof(char));
     if (ctx_rtu->device == NULL) {
         modbus_free(ctx);
         errno = ENOMEM;
