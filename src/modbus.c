@@ -723,6 +723,18 @@ static int check_confirmation(modbus_t *ctx, uint8_t *req,
     return rc;
 }
 
+/**
+ * MODIFIED:  Added function to the modbus API
+ *
+ * This simply calls the static function, which I'm
+ * leaving as-is for backward compatibility
+ * */
+int modbus_check_confirmation(modbus_t *ctx, uint8_t *req,
+                              uint8_t *rsp, int rsp_length)
+{
+    return check_confirmation(ctx, req, rsp, rsp_length);
+}
+
 static int response_io_status(uint8_t *tab_io_status,
                               int address, int nb,
                               uint8_t *rsp, int offset)

@@ -292,6 +292,9 @@ MODBUS_API int modbus_get_function(modbus_t *ctx, const uint8_t *req);
 MODBUS_API int modbus_reply_exception(modbus_t *ctx, const uint8_t *req,
                                       unsigned int exception_code);
 
+MODBUS_API int modbus_check_confirmation(modbus_t *ctx, uint8_t *req,
+                                         uint8_t *rsp, int rsp_length);
+
 /**
  * UTILS FUNCTIONS
  **/
@@ -326,7 +329,7 @@ MODBUS_API int modbus_reply_exception(modbus_t *ctx, const uint8_t *req,
         tab_int16[(index) + 3] = (value);                  \
     } while (0)
 
-MODBUS_API void modbus_set_bits_from_byte(uint8_t *dest, int idx, const uint8_t value);
+    MODBUS_API void modbus_set_bits_from_byte(uint8_t *dest, int idx, const uint8_t value);
 MODBUS_API void modbus_set_bits_from_bytes(uint8_t *dest, int idx, unsigned int nb_bits,
                                            const uint8_t *tab_byte);
 MODBUS_API uint8_t modbus_get_byte_from_bits(const uint8_t *src, int idx, unsigned int nb_bits);
