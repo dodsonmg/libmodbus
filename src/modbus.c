@@ -1884,7 +1884,6 @@ int modbus_read_string(modbus_t *ctx, uint8_t *dest)
     if (rc > 0)
     {
         int offset;
-        int i;
 
         rc = _modbus_receive_msg(ctx, rsp, MSG_CONFIRMATION);
         if (rc == -1)
@@ -2150,7 +2149,6 @@ int modbus_report_slave_id(modbus_t *ctx, int max_dest, uint8_t *dest)
     rc = send_msg(ctx, req, req_length);
     if (rc > 0)
     {
-        int i;
         int offset;
         uint8_t rsp[MAX_MESSAGE_LENGTH];
 
