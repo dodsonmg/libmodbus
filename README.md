@@ -1,8 +1,6 @@
 A groovy modbus library
 =======================
 
-[![Build Status](https://travis-ci.org/stephane/libmodbus.svg?branch=master)](https://travis-ci.org/stephane/libmodbus)
-
 Overview
 --------
 
@@ -87,3 +85,18 @@ To report a bug or to contribute
 --------------------------------
 
 See [CONTRIBUTING](CONTRIBUTING.md) document.
+
+Modifications
+=============
+
+This branch has been modified for limited use with FreeRTOS.
+
+All TCP-related headers and code has been commented out for eventual removal
+or replacement with FreeRTOS+TCP headers and code.
+
+Design pattern for use with FreeRTOS:
+- Client and server initialisation functions to initialise the connect (`ctx`) and state (`mb_mapping`)
+- Tasks representing the runtime client and server operation
+- Tasks to wrap runtime functions such as `modbus_process_request`
+- Use of queues to pass requests and replies between the client and it's libmodbus tasks and the server and it's libmodbus tasks
+- Use of queues to pass requests and replies between libmodbus client and server tasks (currently in place of TCP sockets)
