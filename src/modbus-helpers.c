@@ -102,12 +102,42 @@ modbus_get_function_name_from_fc(int function)
 void
 print_mb_mapping(modbus_mapping_t* mb_mapping)
 {
-    printf("mb_mapping:\t\t%#p\n", (void *)mb_mapping);
-    printf("->tab_bits:\t\t%#p\n", (void *)mb_mapping->tab_bits);
-    printf("->tab_input_bits:\t%#p\n", (void *)mb_mapping->tab_input_bits);
-    printf("->tab_input_registers:\t%#p\n", (void *)mb_mapping->tab_input_registers);
-    printf("->tab_registers:\t%#p\n", (void *)mb_mapping->tab_registers);
-    printf("->tab_string:\t\t%#p\n", (void *)mb_mapping->tab_string);
+    printf("mb_mapping:\t\t");
+    if(mb_mapping != NULL) {
+        CHERI_PRINT_CAP_LITE(mb_mapping);
+    } else { printf ("NULL\n"); }
+
+    printf("->tab_bits:\t\t");
+    if(mb_mapping->tab_bits != NULL) {
+        CHERI_PRINT_CAP_LITE(mb_mapping->tab_bits);
+    } else { printf ("NULL\n"); }
+
+    printf("->tab_input_bits:\t");
+    if(mb_mapping->tab_input_bits != NULL) {
+        CHERI_PRINT_CAP_LITE(mb_mapping->tab_input_bits);
+    } else { printf ("NULL\n"); }
+
+    printf("->tab_input_registers:\t");
+    if(mb_mapping->tab_input_registers != NULL) {
+        CHERI_PRINT_CAP_LITE(mb_mapping->tab_input_registers);
+    } else { printf ("NULL\n"); }
+
+    printf("->tab_registers:\t");
+    if(mb_mapping->tab_registers != NULL) {
+        CHERI_PRINT_CAP_LITE(mb_mapping->tab_registers);
+    } else { printf ("NULL\n"); }
+
+    printf(">tab_string:\t\t");
+    if(mb_mapping->tab_string != NULL) {
+        CHERI_PRINT_CAP_LITE(mb_mapping->tab_string);
+    } else { printf ("NULL\n"); }
+
+    // printf("mb_mapping:\t\t%#p\n", (void *)mb_mapping);
+    // printf("->tab_bits:\t\t%#p\n", (void *)mb_mapping->tab_bits);
+    // printf("->tab_input_bits:\t%#p\n", (void *)mb_mapping->tab_input_bits);
+    // printf("->tab_input_registers:\t%#p\n", (void *)mb_mapping->tab_input_registers);
+    // printf("->tab_registers:\t%#p\n", (void *)mb_mapping->tab_registers);
+    // printf("->tab_string:\t\t%#p\n", (void *)mb_mapping->tab_string);
 }
 
 /**
