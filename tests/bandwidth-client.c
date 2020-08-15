@@ -82,11 +82,11 @@ int main(int argc, char *argv[])
     }
 
     /* Allocate and initialize the memory to store the status */
-    tab_bit = (uint8_t *) malloc(MODBUS_MAX_READ_BITS * sizeof(uint8_t));
+    tab_bit = (uint8_t *) pvPortMalloc(MODBUS_MAX_READ_BITS * sizeof(uint8_t));
     memset(tab_bit, 0, MODBUS_MAX_READ_BITS * sizeof(uint8_t));
 
     /* Allocate and initialize the memory to store the registers */
-    tab_reg = (uint16_t *) malloc(MODBUS_MAX_READ_REGISTERS * sizeof(uint16_t));
+    tab_reg = (uint16_t *) pvPortMalloc(MODBUS_MAX_READ_REGISTERS * sizeof(uint16_t));
     memset(tab_reg, 0, MODBUS_MAX_READ_REGISTERS * sizeof(uint16_t));
 
     printf("READ BITS\n\n");
@@ -203,8 +203,8 @@ int main(int argc, char *argv[])
     printf("\n");
 
     /* Free the memory */
-    free(tab_bit);
-    free(tab_reg);
+    vPortFree(tab_bit);
+    vPortFree(tab_reg);
 
     /* Close the connection */
     modbus_close(ctx);

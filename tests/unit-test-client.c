@@ -122,13 +122,13 @@ int main(int argc, char *argv[])
 
     /* Allocate and initialize the memory to store the bits */
     nb_points = (UT_BITS_NB > UT_INPUT_BITS_NB) ? UT_BITS_NB : UT_INPUT_BITS_NB;
-    tab_rp_bits = (uint8_t *) malloc(nb_points * sizeof(uint8_t));
+    tab_rp_bits = (uint8_t *) pvPortMalloc(nb_points * sizeof(uint8_t));
     memset(tab_rp_bits, 0, nb_points * sizeof(uint8_t));
 
     /* Allocate and initialize the memory to store the registers */
     nb_points = (UT_REGISTERS_NB > UT_INPUT_REGISTERS_NB) ?
         UT_REGISTERS_NB : UT_INPUT_REGISTERS_NB;
-    tab_rp_registers = (uint16_t *) malloc(nb_points * sizeof(uint16_t));
+    tab_rp_registers = (uint16_t *) pvPortMalloc(nb_points * sizeof(uint16_t));
     memset(tab_rp_registers, 0, nb_points * sizeof(uint16_t));
 
     printf("\nTEST WRITE/READ:\n");
@@ -646,14 +646,14 @@ int main(int argc, char *argv[])
     printf("\nTEST BAD RESPONSE ERROR:\n");
 
     /* Allocate only the required space */
-    tab_rp_registers_bad = (uint16_t *) malloc(
+    tab_rp_registers_bad = (uint16_t *) pvPortMalloc(
         UT_REGISTERS_NB_SPECIAL * sizeof(uint16_t));
 
     rc = modbus_read_registers(ctx, UT_REGISTERS_ADDRESS,
                                UT_REGISTERS_NB_SPECIAL, tab_rp_registers_bad);
     printf("* modbus_read_registers: ");
     ASSERT_TRUE(rc == -1 && errno == EMBBADDATA, "");
-    free(tab_rp_registers_bad);
+    vPortFree(tab_rp_registers_bad);
 
     /** MANUAL EXCEPTION **/
     printf("\nTEST MANUAL EXCEPTION:\n");
@@ -688,8 +688,8 @@ int main(int argc, char *argv[])
 
 close:
     /* Free the memory */
-    free(tab_rp_bits);
-    free(tab_rp_registers);
+    vPortFree(tab_rp_bits);
+    vPortFree(tab_rp_registers);
 
     /* Close the connection */
     modbus_close(ctx);

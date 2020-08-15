@@ -58,14 +58,14 @@ int main(int argc, char*argv[])
 
     if (use_backend == TCP) {
         ctx = modbus_new_tcp("127.0.0.1", 1502);
-        query = malloc(MODBUS_TCP_MAX_ADU_LENGTH);
+        query = pvPortMalloc(MODBUS_TCP_MAX_ADU_LENGTH);
     } else if (use_backend == TCP_PI) {
         ctx = modbus_new_tcp_pi("::0", "1502");
-        query = malloc(MODBUS_TCP_MAX_ADU_LENGTH);
+        query = pvPortMalloc(MODBUS_TCP_MAX_ADU_LENGTH);
     } else {
         ctx = modbus_new_rtu("/dev/ttyUSB0", 115200, 'N', 8, 1);
         modbus_set_slave(ctx, SERVER_ID);
-        query = malloc(MODBUS_RTU_MAX_ADU_LENGTH);
+        query = pvPortMalloc(MODBUS_RTU_MAX_ADU_LENGTH);
     }
     header_length = modbus_get_header_length(ctx);
 
@@ -194,7 +194,7 @@ int main(int argc, char*argv[])
         }
     }
     modbus_mapping_free(mb_mapping);
-    free(query);
+    vPortFree(query);
     /* For RTU */
     modbus_close(ctx);
     modbus_free(ctx);

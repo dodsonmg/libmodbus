@@ -69,19 +69,19 @@ int main(void)
     /* Allocate and initialize the different memory spaces */
     nb = ADDRESS_END - ADDRESS_START;
 
-    tab_rq_bits = (uint8_t *) malloc(nb * sizeof(uint8_t));
+    tab_rq_bits = (uint8_t *) pvPortMalloc(nb * sizeof(uint8_t));
     memset(tab_rq_bits, 0, nb * sizeof(uint8_t));
 
-    tab_rp_bits = (uint8_t *) malloc(nb * sizeof(uint8_t));
+    tab_rp_bits = (uint8_t *) pvPortMalloc(nb * sizeof(uint8_t));
     memset(tab_rp_bits, 0, nb * sizeof(uint8_t));
 
-    tab_rq_registers = (uint16_t *) malloc(nb * sizeof(uint16_t));
+    tab_rq_registers = (uint16_t *) pvPortMalloc(nb * sizeof(uint16_t));
     memset(tab_rq_registers, 0, nb * sizeof(uint16_t));
 
-    tab_rp_registers = (uint16_t *) malloc(nb * sizeof(uint16_t));
+    tab_rp_registers = (uint16_t *) pvPortMalloc(nb * sizeof(uint16_t));
     memset(tab_rp_registers, 0, nb * sizeof(uint16_t));
 
-    tab_rw_rq_registers = (uint16_t *) malloc(nb * sizeof(uint16_t));
+    tab_rw_rq_registers = (uint16_t *) pvPortMalloc(nb * sizeof(uint16_t));
     memset(tab_rw_rq_registers, 0, nb * sizeof(uint16_t));
 
     nb_loop = nb_fail = 0;
@@ -231,11 +231,11 @@ int main(void)
     }
 
     /* Free the memory */
-    free(tab_rq_bits);
-    free(tab_rp_bits);
-    free(tab_rq_registers);
-    free(tab_rp_registers);
-    free(tab_rw_rq_registers);
+    vPortFree(tab_rq_bits);
+    vPortFree(tab_rp_bits);
+    vPortFree(tab_rq_registers);
+    vPortFree(tab_rp_registers);
+    vPortFree(tab_rw_rq_registers);
 
     /* Close the connection */
     modbus_close(ctx);
