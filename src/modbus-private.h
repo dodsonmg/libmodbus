@@ -100,6 +100,11 @@ struct _modbus {
     struct timeval indication_timeout;
     const modbus_backend_t *backend;
     void *backend_data;
+#if defined(__freertos__)
+    int server;
+    QueueHandle_t xQueueClientServer;
+    QueueHandle_t xQueueServerClient;
+#endif
 };
 
 void _modbus_init_common(modbus_t *ctx);

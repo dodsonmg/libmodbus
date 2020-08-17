@@ -18,6 +18,11 @@
 #include "stdint.h"
 #endif
 
+#ifdef __freertos__
+#include "FreeRTOS.h"
+#include "queue.h"
+#endif
+
 /* For CHERI */
 /* TODO:  Remove this when testing is complete */
 #ifndef __has_feature
@@ -199,6 +204,16 @@ typedef struct _modbus_mapping_t
     uint8_t *tab_string;
 } modbus_mapping_t;
 
+#if defined(__freertos__)
+
+/* structure to hold queue messages (requests and responses) */
+typedef struct _modbus_queue_msg_t
+{
+  int msg_length;
+  uint8_t *msg;
+} modbus_queue_msg_t;
+#endif
+
 typedef enum
 {
     MODBUS_ERROR_RECOVERY_NONE = 0,
@@ -232,6 +247,11 @@ MODBUS_API void modbus_free(modbus_t *ctx);
 MODBUS_API int modbus_flush(modbus_t *ctx);
 MODBUS_API int modbus_set_debug(modbus_t *ctx, int flag);
 MODBUS_API int modbus_get_debug(modbus_t *ctx);
+#if defined(__freertos__)
+MODBUS_API int modbus_set_request_queue(modbus_t *ctx, QueueHandle_t xQueueClientServer);
+MODBUS_API int modbus_set_response_queue(modbus_t *ctx, QueueHandle_t xQueueServerClient);
+MODBUS_API int modbus_set_server(modbus_t *ctx, int flag);
+#endif
 
 MODBUS_API const char *modbus_strerror(int errnum);
 
@@ -252,6 +272,7 @@ MODBUS_API int modbus_write_bits(modbus_t *ctx, int addr, int nb, const uint8_t 
 MODBUS_API int modbus_write_registers_build_request(modbus_t *ctx, int addr, int nb, const uint16_t *src, uint8_t *req);
 MODBUS_API int modbus_write_registers(modbus_t *ctx, int addr, int nb, const uint16_t *data);
 MODBUS_API int modbus_read_string_build_request(modbus_t *ctx, uint8_t *req);
+MODBUS_API int modbus_read_string_process_response(modbus_t *ctx, uint8_t *rsp, int rsp_length, uint8_t *dest);
 MODBUS_API int modbus_read_string(modbus_t *ctx, uint8_t *dest);
 MODBUS_API int modbus_write_string_build_request(modbus_t *ctx, const uint8_t *str, int str_length, uint8_t *req);
 MODBUS_API int modbus_write_string(modbus_t *ctx, const uint8_t *str, int str_length);

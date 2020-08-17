@@ -177,51 +177,81 @@ static unsigned int compute_response_length_from_request(modbus_t *ctx, uint8_t 
 }
 
 /* Sends a request/response */
+/**
+ * MODIFIED:  Uses queues for tx/rx in FreeRTOS
+ * */
 static int send_msg(modbus_t *ctx, uint8_t *msg, int msg_length)
 {
     int rc;
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    rc = -1;
-    return rc;
 
-    // int i;
+    msg_length = ctx->backend->send_msg_pre(msg, msg_length);
 
-    // msg_length = ctx->backend->send_msg_pre(msg, msg_length);
+    if (ctx->debug) {
+        for (int i = 0; i < msg_length; i++)
+            printf("[%.2X]", msg[i]);
+        printf("\n");
+    }
 
-    // if (ctx->debug) {
-    //     for (i = 0; i < msg_length; i++)
-    //         printf("[%.2X]", msg[i]);
-    //     printf("\n");
-    // }
+#if defined(__freertos__)
+    BaseType_t xReturned;
+    modbus_queue_msg_t *pxQueueMsg = (modbus_queue_msg_t *)pvPortMalloc(sizeof(modbus_queue_msg_t));
+    pxQueueMsg->msg = msg;
+    pxQueueMsg->msg_length = msg_length;
+    /**
+     * Send to the queue - causing the queue receive task to unblock and
+     * process a request.  0 is used as the block time so the sending operation
+     * will not block - it shouldn't need to block as the queue should always
+     * be empty at this point in the code.
+     * */
+    if(ctx->server)
+    {
+        xReturned = xQueueSend(ctx->xQueueServerClient, &pxQueueMsg, 0U);
+    }
+    else
+    {
+        xReturned = xQueueSend(ctx->xQueueClientServer, &pxQueueMsg, 0U);
+    }
+    configASSERT(xReturned == pdPASS);
 
-    // /* In recovery mode, the write command will be issued until to be
-    //    successful! Disabled by default. */
-    // do {
-    //     rc = ctx->backend->send(ctx, msg, msg_length);
-    //     if (rc == -1) {
-    //         _error_print(ctx, NULL);
-    //         if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) {
-    //             int saved_errno = errno;
+    if (pdPASS)
+    {
+        /* send_msg should return the message length */
+        rc = msg_length;
+    }
+    else
+    {
+        errno = EMBBADDATA;
+        rc = -1;
+    }
+#else
+    /* In recovery mode, the write command will be issued until to be
+       successful! Disabled by default. */
+    do {
+        rc = ctx->backend->send(ctx, msg, msg_length);
+        if (rc == -1) {
+            _error_print(ctx, NULL);
+            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) {
+                int saved_errno = errno;
 
-    //             if ((errno == EBADF || errno == ECONNRESET || errno == EPIPE)) {
-    //                 modbus_close(ctx);
-    //                 _sleep_response_timeout(ctx);
-    //                 modbus_connect(ctx);
-    //             } else {
-    //                 _sleep_response_timeout(ctx);
-    //                 modbus_flush(ctx);
-    //             }
-    //             errno = saved_errno;
-    //         }
-    //     }
-    // } while ((ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) &&
-    //          rc == -1);
+                if ((errno == EBADF || errno == ECONNRESET || errno == EPIPE)) {
+                    modbus_close(ctx);
+                    _sleep_response_timeout(ctx);
+                    modbus_connect(ctx);
+                } else {
+                    _sleep_response_timeout(ctx);
+                    modbus_flush(ctx);
+                }
+                errno = saved_errno;
+            }
+        }
+    } while ((ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) &&
+             rc == -1);
 
-    // if (rc > 0 && rc != msg_length) {
-    //     errno = EMBBADDATA;
-    //     return -1;
-    // }
-
+    if (rc > 0 && rc != msg_length) {
+        errno = EMBBADDATA;
+        return -1;
+    }
+#endif
     return rc;
 }
 
@@ -386,150 +416,177 @@ static int compute_data_length_after_meta(modbus_t *ctx, uint8_t *msg,
    - read() or recv() error codes
 */
 
+/**
+ * MODIFIED:  Uses queues for tx/rx in FreeRTOS
+ * */
+
 int _modbus_receive_msg(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type)
 {
     int rc;
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    rc = 1;
-    return rc;
+    int msg_length = 0;
 
-    // fd_set rset;
-    // struct timeval tv;
-    // struct timeval *p_tv;
-    // int length_to_read;
-    // int msg_length = 0;
-    // _step_t step;
+    if (ctx->debug) {
+        if (msg_type == MSG_INDICATION) {
+            printf("Waiting for an indication...\n");
+        } else {
+            printf("Waiting for a confirmation...\n");
+        }
+    }
 
-    // if (ctx->debug) {
-    //     if (msg_type == MSG_INDICATION) {
-    //         printf("Waiting for an indication...\n");
-    //     } else {
-    //         printf("Waiting for a confirmation...\n");
-    //     }
-    // }
+#if defined(__freertos__)
+    BaseType_t xReturned;
+    modbus_queue_msg_t *pxQueueMsg;
 
-    // /* Add a file descriptor to the set */
-    // FD_ZERO(&rset);
-    // FD_SET(ctx->s, &rset);
+    /**
+     * Wait until the response arrives in the queue - this task will block
+     * indefinitely provided INCLUDE_vTaskSuspend is set to 1 in
+     * FreeRTOSConfig.h. */
+    if(msg_type == MSG_INDICATION) {
+        xQueueReceive(ctx->xQueueClientServer, &pxQueueMsg, portMAX_DELAY);
+    } else {
+        xQueueReceive(ctx->xQueueServerClient, &pxQueueMsg, portMAX_DELAY);
+    }
 
-    // /* We need to analyse the message step by step.  At the first step, we want
-    //  * to reach the function code because all packets contain this
-    //  * information. */
-    // step = _STEP_FUNCTION;
-    // length_to_read = ctx->backend->header_length + 1;
+    msg_length = pxQueueMsg->msg_length;
 
-    // if (msg_type == MSG_INDICATION) {
-    //     /* Wait for a message, we don't know when the message will be
-    //      * received */
-    //     if (ctx->indication_timeout.tv_sec == 0 && ctx->indication_timeout.tv_usec == 0) {
-    //         /* By default, the indication timeout isn't set */
-    //         p_tv = NULL;
-    //     } else {
-    //         /* Wait for an indication (name of a received request by a server, see schema) */
-    //         tv.tv_sec = ctx->indication_timeout.tv_sec;
-    //         tv.tv_usec = ctx->indication_timeout.tv_usec;
-    //         p_tv = &tv;
-    //     }
-    // } else {
-    //     tv.tv_sec = ctx->response_timeout.tv_sec;
-    //     tv.tv_usec = ctx->response_timeout.tv_usec;
-    //     p_tv = &tv;
-    // }
+    memcpy(msg, pxQueueMsg->msg, msg_length);
 
-    // while (length_to_read != 0) {
-    //     rc = ctx->backend->select(ctx, &rset, p_tv, length_to_read);
-    //     if (rc == -1) {
-    //         _error_print(ctx, "select");
-    //         if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) {
-    //             int saved_errno = errno;
+    /* Display the hex code of each character received */
+    if (ctx->debug)
+    {
+        for (int i = 0; i < msg_length; ++i)
+            printf("<%.2X>", msg[i]);
+    }
+#else
+    fd_set rset;
+    struct timeval tv;
+    struct timeval *p_tv;
+    int length_to_read;
+    _step_t step;
 
-    //             if (errno == ETIMEDOUT) {
-    //                 _sleep_response_timeout(ctx);
-    //                 modbus_flush(ctx);
-    //             } else if (errno == EBADF) {
-    //                 modbus_close(ctx);
-    //                 modbus_connect(ctx);
-    //             }
-    //             errno = saved_errno;
-    //         }
-    //         return -1;
-    //     }
+    /* Add a file descriptor to the set */
+    FD_ZERO(&rset);
+    FD_SET(ctx->s, &rset);
 
-    //     rc = ctx->backend->recv(ctx, msg + msg_length, length_to_read);
-    //     if (rc == 0) {
-    //         errno = ECONNRESET;
-    //         rc = -1;
-    //     }
+    /* We need to analyse the message step by step.  At the first step, we want
+     * to reach the function code because all packets contain this
+     * information. */
+    step = _STEP_FUNCTION;
+    length_to_read = ctx->backend->header_length + 1;
 
-    //     if (rc == -1) {
-    //         _error_print(ctx, "read");
-    //         if ((ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) &&
-    //             (errno == ECONNRESET || errno == ECONNREFUSED ||
-    //              errno == EBADF)) {
-    //             int saved_errno = errno;
-    //             modbus_close(ctx);
-    //             modbus_connect(ctx);
-    //             /* Could be removed by previous calls */
-    //             errno = saved_errno;
-    //         }
-    //         return -1;
-    //     }
+    if (msg_type == MSG_INDICATION) {
+        /* Wait for a message, we don't know when the message will be
+         * received */
+        if (ctx->indication_timeout.tv_sec == 0 && ctx->indication_timeout.tv_usec == 0) {
+            /* By default, the indication timeout isn't set */
+            p_tv = NULL;
+        } else {
+            /* Wait for an indication (name of a received request by a server, see schema) */
+            tv.tv_sec = ctx->indication_timeout.tv_sec;
+            tv.tv_usec = ctx->indication_timeout.tv_usec;
+            p_tv = &tv;
+        }
+    } else {
+        tv.tv_sec = ctx->response_timeout.tv_sec;
+        tv.tv_usec = ctx->response_timeout.tv_usec;
+        p_tv = &tv;
+    }
 
-    //     /* Display the hex code of each character received */
-    //     if (ctx->debug) {
-    //         int i;
-    //         for (i=0; i < rc; i++)
-    //             printf("<%.2X>", msg[msg_length + i]);
-    //     }
+    while (length_to_read != 0) {
+        rc = ctx->backend->select(ctx, &rset, p_tv, length_to_read);
+        if (rc == -1) {
+            _error_print(ctx, "select");
+            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) {
+                int saved_errno = errno;
 
-    //     /* Sums bytes received */
-    //     msg_length += rc;
-    //     /* Computes remaining bytes */
-    //     length_to_read -= rc;
+                if (errno == ETIMEDOUT) {
+                    _sleep_response_timeout(ctx);
+                    modbus_flush(ctx);
+                } else if (errno == EBADF) {
+                    modbus_close(ctx);
+                    modbus_connect(ctx);
+                }
+                errno = saved_errno;
+            }
+            return -1;
+        }
 
-    //     if (length_to_read == 0) {
-    //         switch (step) {
-    //         case _STEP_FUNCTION:
-    //             /* Function code position */
-    //             length_to_read = compute_meta_length_after_function(
-    //                 msg[ctx->backend->header_length],
-    //                 msg_type);
-    //             if (length_to_read != 0) {
-    //                 step = _STEP_META;
-    //                 break;
-    //             } /* else switches straight to the next step */
-    //         case _STEP_META:
-    //             length_to_read = compute_data_length_after_meta(
-    //                 ctx, msg, msg_type);
-    //             if ((msg_length + length_to_read) > (int)ctx->backend->max_adu_length) {
-    //                 errno = EMBBADDATA;
-    //                 _error_print(ctx, "too many data");
-    //                 return -1;
-    //             }
-    //             step = _STEP_DATA;
-    //             break;
-    //         default:
-    //             break;
-    //         }
-    //     }
+        rc = ctx->backend->recv(ctx, msg + msg_length, length_to_read);
+        if (rc == 0) {
+            errno = ECONNRESET;
+            rc = -1;
+        }
 
-    //     if (length_to_read > 0 &&
-    //         (ctx->byte_timeout.tv_sec > 0 || ctx->byte_timeout.tv_usec > 0)) {
-    //         /* If there is no character in the buffer, the allowed timeout
-    //            interval between two consecutive bytes is defined by
-    //            byte_timeout */
-    //         tv.tv_sec = ctx->byte_timeout.tv_sec;
-    //         tv.tv_usec = ctx->byte_timeout.tv_usec;
-    //         p_tv = &tv;
-    //     }
-    //     /* else timeout isn't set again, the full response must be read before
-    //        expiration of response timeout (for CONFIRMATION only) */
-    // }
+        if (rc == -1) {
+            _error_print(ctx, "read");
+            if ((ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) &&
+                (errno == ECONNRESET || errno == ECONNREFUSED ||
+                 errno == EBADF)) {
+                int saved_errno = errno;
+                modbus_close(ctx);
+                modbus_connect(ctx);
+                /* Could be removed by previous calls */
+                errno = saved_errno;
+            }
+            return -1;
+        }
 
-    // if (ctx->debug)
-    //     printf("\n");
+        /* Display the hex code of each character received */
+        if (ctx->debug) {
+            int i;
+            for (i=0; i < rc; i++)
+                printf("<%.2X>", msg[msg_length + i]);
+        }
 
-    // return ctx->backend->check_integrity(ctx, msg, msg_length);
+        /* Sums bytes received */
+        msg_length += rc;
+        /* Computes remaining bytes */
+        length_to_read -= rc;
+
+        if (length_to_read == 0) {
+            switch (step) {
+            case _STEP_FUNCTION:
+                /* Function code position */
+                length_to_read = compute_meta_length_after_function(
+                    msg[ctx->backend->header_length],
+                    msg_type);
+                if (length_to_read != 0) {
+                    step = _STEP_META;
+                    break;
+                } /* else switches straight to the next step */
+            case _STEP_META:
+                length_to_read = compute_data_length_after_meta(
+                    ctx, msg, msg_type);
+                if ((msg_length + length_to_read) > (int)ctx->backend->max_adu_length) {
+                    errno = EMBBADDATA;
+                    _error_print(ctx, "too many data");
+                    return -1;
+                }
+                step = _STEP_DATA;
+                break;
+            default:
+                break;
+            }
+        }
+
+        if (length_to_read > 0 &&
+            (ctx->byte_timeout.tv_sec > 0 || ctx->byte_timeout.tv_usec > 0)) {
+            /* If there is no character in the buffer, the allowed timeout
+               interval between two consecutive bytes is defined by
+               byte_timeout */
+            tv.tv_sec = ctx->byte_timeout.tv_sec;
+            tv.tv_usec = ctx->byte_timeout.tv_usec;
+            p_tv = &tv;
+        }
+        /* else timeout isn't set again, the full response must be read before
+           expiration of response timeout (for CONFIRMATION only) */
+    }
+#endif
+
+    if (ctx->debug)
+        printf("\n");
+
+    return ctx->backend->check_integrity(ctx, msg, msg_length);
 }
 
 /* Receive the request from a modbus master */
@@ -563,6 +620,10 @@ int modbus_receive_confirmation(modbus_t *ctx, uint8_t *rsp)
     return _modbus_receive_msg(ctx, rsp, MSG_CONFIRMATION);
 }
 
+/**
+ * If the request and response nb's match, returns nb
+ * else returns -1
+ * */
 static int check_confirmation(modbus_t *ctx, uint8_t *req,
                               uint8_t *rsp, int rsp_length)
 {
@@ -2398,6 +2459,23 @@ int modbus_set_debug(modbus_t *ctx, int flag)
     return 0;
 }
 
+#if defined(__freertos__)
+/**
+ * MODIFIED: Added this function
+ * */
+int modbus_set_server(modbus_t *ctx, int flag)
+{
+    if (ctx == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ctx->server = flag;
+    return 0;
+}
+#endif
+
 /**
  * MODIFIED: Added this function
  * */
@@ -2412,12 +2490,46 @@ int modbus_get_debug(modbus_t *ctx)
     return ctx->debug;
 }
 
-/* Allocates 5 arrays to store bits, input bits, registers, inputs
-   registers, and a string. The pointers are stored in modbus_mapping structure.
+#if defined(__freertos__)
+/**
+ * MODIFIED: Added this function
+ * */
+int modbus_set_request_queue(modbus_t *ctx, QueueHandle_t xQueueClientServer)
+{
+    if (ctx == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    ctx->xQueueClientServer = xQueueClientServer;
+    return 0;
+}
 
-   The modbus_mapping_new_start_address() function shall return the new allocated
-   structure if successful. Otherwise it shall return NULL and set errno to
-   ENOMEM. */
+/**
+ * MODIFIED: Added this function
+ * */
+int modbus_set_response_queue(modbus_t *ctx, QueueHandle_t xQueueServerClient)
+{
+    if (ctx == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    ctx->xQueueServerClient = xQueueServerClient;
+    return 0;
+}
+#endif
+
+/**
+ * Allocates 5 arrays to store bits, input bits, registers, inputs
+ * registers, and a string. The pointers are stored in modbus_mapping structure.
+ *
+ * The modbus_mapping_new_start_address() function shall return the new allocated
+ * structure if successful. Otherwise it shall return NULL and set errno to
+ * ENOMEM.
+ *
+ * MODIFIED: Added tab_stringthis function
+ **/
 modbus_mapping_t *modbus_mapping_new_start_address(
     unsigned int start_bits, unsigned int nb_bits,
     unsigned int start_input_bits, unsigned int nb_input_bits,

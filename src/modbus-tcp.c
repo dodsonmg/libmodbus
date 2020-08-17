@@ -29,22 +29,21 @@
 # include <ws2tcpip.h>
 # define SHUT_RDWR 2
 # define close closesocket
-#else
-/* TEMP REMOVAL: To support FreeRTOS port development */
-// # include <sys/socket.h>
-// # include <sys/ioctl.h>
+#elif !defined(__freertos__)
+# include <sys/socket.h>
+# include <sys/ioctl.h>
+#endif
 
 #if defined(__OpenBSD__) || (defined(__FreeBSD__) && __FreeBSD__ < 5)
 # define OS_BSD
 # include <netinet/in_systm.h>
 #endif
 
-/* TEMP REMOVAL: To support FreeRTOS port development */
-// # include <netinet/in.h>
-// # include <netinet/ip.h>
-// # include <netinet/tcp.h>
-// # include <arpa/inet.h>
-// # include <netdb.h>
+#if !defined(__freertos__)// # include <netinet/in.h>
+# include <netinet/ip.h>
+# include <netinet/tcp.h>
+# include <arpa/inet.h>
+# include <netdb.h>
 #endif
 
 #if !defined(MSG_NOSIGNAL)
@@ -899,6 +898,12 @@ modbus_t* modbus_new_tcp(const char *ip, int port)
     }
     ctx_tcp->port = port;
     ctx_tcp->t_id = 0;
+
+#if defined(__freertos__)
+    ctx->xQueueClientServer = NULL;
+    ctx->xQueueServerClient = NULL;
+    ctx->server = pdFALSE;
+#endif
 
     return ctx;
 }
