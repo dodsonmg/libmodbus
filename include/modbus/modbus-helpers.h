@@ -17,6 +17,11 @@
     "****************************************" \
     "****************************************\n"
 
+/* define the max length of the name of a modbus function
+ * bounds MODBUS_FC_WRITE_MULTIPLE_HOLDING_REGISTERS and 
+ */
+#define MODBUS_MAX_FUNCTION_NAME_LEN 50 
+
 /******************
  * HELPER FUNCTIONS
  *****************/
