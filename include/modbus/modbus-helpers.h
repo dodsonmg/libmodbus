@@ -9,6 +9,15 @@
 /* for Modbus */
 #include "modbus.h"
 
+/* For CHERI */
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+
+#if __has_feature(capabilities)
+#include "cheri_helper.h"
+#endif // __has_feature(capabilities)
+
 /*********
  * GLOBALS
  ********/
@@ -18,9 +27,9 @@
     "****************************************\n"
 
 /* define the max length of the name of a modbus function
- * bounds MODBUS_FC_WRITE_MULTIPLE_HOLDING_REGISTERS and 
+ * bounds MODBUS_FC_WRITE_MULTIPLE_HOLDING_REGISTERS
  */
-#define MODBUS_MAX_FUNCTION_NAME_LEN 50 
+#define MODBUS_MAX_FUNCTION_NAME_LEN 50
 
 /******************
  * HELPER FUNCTIONS

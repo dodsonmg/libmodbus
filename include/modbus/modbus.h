@@ -23,16 +23,6 @@
 #include "queue.h"
 #endif
 
-/* For CHERI */
-/* TODO:  Remove this when testing is complete */
-#ifndef __has_feature
-#define __has_feature(x) 0
-#endif
-
-#if __has_feature(capabilities)
-#include "cheri_helper.h"
-#endif // __has_feature(capabilities)
-
 /* For FreeRTOS */
 #include "FreeRTOS.h"
 
