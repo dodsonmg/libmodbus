@@ -1,6 +1,11 @@
 #ifndef _CHERI_HELPER_H_
 #define _CHERI_HELPER_H_
 
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+
+#if __has_feature(capabilities)
 #include <cheriintrin.h>
 
 #define CHERI_PRINT_CAP(cap)                         \
@@ -51,5 +56,10 @@
             (cheri_perms_get(cap) & CHERI_PERM_CCALL) > 0 ? 1 : 0,           \
             (cheri_perms_get(cap) & CHERI_PERM_UNSEAL) > 0 ? 1 : 0,          \
             (cheri_perms_get(cap) & CHERI_PERM_SYSTEM_REGS) > 0 ? 1 : 0)
+#else
+#define CHERI_PRINT_CAP(cap) printf("b:%jx\n", cap)
+#define CHERI_PRINT_CAP_LITE(cap) CHERI_PRINT_CAP(cap)
+#define CHERI_EXPAND_PERMS(cap) CHERI_PRINT_CAP(cap)
+#endif /* __has_feature(capabilities) */
 
 #endif /* _CHERI_HELPER_H_ */

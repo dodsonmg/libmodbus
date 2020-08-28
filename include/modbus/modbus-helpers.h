@@ -10,13 +10,7 @@
 #include "modbus.h"
 
 /* For CHERI */
-#ifndef __has_feature
-#define __has_feature(x) 0
-#endif
-
-#if __has_feature(capabilities)
 #include "cheri_helper.h"
-#endif // __has_feature(capabilities)
 
 /*********
  * GLOBALS
