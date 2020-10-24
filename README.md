@@ -89,10 +89,15 @@ See [CONTRIBUTING](CONTRIBUTING.md) document.
 Modifications
 =============
 
-This branch has been modified for limited use with FreeRTOS.
+This branch has been modified for limited use with CheriFreeRTOS.
 
-All TCP-related headers and code has been commented out for eventual removal
+I hacked out a lot of the original `automake` stuff to make the configuration
+static.  This could probably be reverted at some point.
+
+All TCP-related headers and code have been commented out for eventual removal
 or replacement with FreeRTOS+TCP headers and code.
+
+I added a `cheri-helper.h` file to support pretty printing of CHERI caps and perms.
 
 Design pattern for use with FreeRTOS:
 - Client and server initialisation functions to initialise the connect (`ctx`) and state (`mb_mapping`)
