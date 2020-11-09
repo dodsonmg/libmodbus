@@ -98,22 +98,26 @@ void _error_print(modbus_t *ctx, const char *context)
 
 static void _sleep_response_timeout(modbus_t *ctx)
 {
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-
-    //     /* Response timeout is always positive */
-    // #ifdef _WIN32
-    //     /* usleep doesn't exist on Windows */
-    //     Sleep((ctx->response_timeout.tv_sec * 1000) +
-    //           (ctx->response_timeout.tv_usec / 1000));
-    // #else
-    //     /* usleep source code */
-    //     struct timespec request, remaining;
-    //     request.tv_sec = ctx->response_timeout.tv_sec;
-    //     request.tv_nsec = ((long int)ctx->response_timeout.tv_usec) * 1000;
-    //     while (nanosleep(&request, &remaining) == -1 && errno == EINTR) {
-    //         request = remaining;
-    //     }
-    // #endif
+    /* Response timeout is always positive */
+#if defined (_WIN32)
+    /* usleep doesn't exist on Windows */
+    Sleep((ctx->response_timeout.tv_sec * 1000) +
+          (ctx->response_timeout.tv_usec / 1000));
+#elif defined (__freertos__)
+    /* usleep doesn't exist on FreeRTOS */
+    const TickType_t xDelay = pdMS_TO_TICKS(
+            (ctx->response_timeout.tv_sec * 1000) +
+            (ctx->response_timeout.tv_usec / 1000));
+    vTaskDelay(xDelay);
+#else
+    /* usleep source code */
+    struct timespec request, remaining;
+    request.tv_sec = ctx->response_timeout.tv_sec;
+    request.tv_nsec = ((long int)ctx->response_timeout.tv_usec) * 1000;
+    while (nanosleep(&request, &remaining) == -1 && errno == EINTR) {
+        request = remaining;
+    }
+#endif
 }
 
 int modbus_flush(modbus_t *ctx)
