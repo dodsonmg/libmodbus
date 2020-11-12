@@ -19,12 +19,14 @@
 #endif
 
 #ifdef __freertos__
-#include "FreeRTOS.h"
-#include "queue.h"
-#endif
-
 /* For FreeRTOS */
 #include "FreeRTOS.h"
+#include "list.h"
+
+/* FreeRTOS+TCP includes */
+#include "FreeRTOS_IP.h"
+#include "FreeRTOS_Sockets.h"
+#endif
 
 #if defined(_MSC_VER)
 #if defined(DLLBUILD)
@@ -194,16 +196,6 @@ typedef struct _modbus_mapping_t
     uint8_t *tab_string;
 } modbus_mapping_t;
 
-#if defined(__freertos__)
-
-/* structure to hold queue messages (requests and responses) */
-typedef struct _modbus_queue_msg_t
-{
-  int msg_length;
-  uint8_t *msg;
-} modbus_queue_msg_t;
-#endif
-
 typedef enum
 {
     MODBUS_ERROR_RECOVERY_NONE = 0,
@@ -215,8 +207,13 @@ typedef enum
 MODBUS_API int modbus_set_slave(modbus_t *ctx, int slave);
 MODBUS_API int modbus_get_slave(modbus_t *ctx);
 MODBUS_API int modbus_set_error_recovery(modbus_t *ctx, modbus_error_recovery_mode error_recovery);
+#if defined(__freertos__)
+MODBUS_API int modbus_set_socket(modbus_t *ctx, Socket_t s);
+MODBUS_API Socket_t modbus_get_socket(modbus_t *ctx);
+#else
 MODBUS_API int modbus_set_socket(modbus_t *ctx, int s);
 MODBUS_API int modbus_get_socket(modbus_t *ctx);
+#endif
 
 MODBUS_API int modbus_get_response_timeout(modbus_t *ctx, uint32_t *to_sec, uint32_t *to_usec);
 MODBUS_API int modbus_set_response_timeout(modbus_t *ctx, uint32_t to_sec, uint32_t to_usec);
@@ -238,8 +235,7 @@ MODBUS_API int modbus_flush(modbus_t *ctx);
 MODBUS_API int modbus_set_debug(modbus_t *ctx, int flag);
 MODBUS_API int modbus_get_debug(modbus_t *ctx);
 #if defined(__freertos__)
-MODBUS_API int modbus_set_request_queue(modbus_t *ctx, QueueHandle_t xQueueClientServer);
-MODBUS_API int modbus_set_response_queue(modbus_t *ctx, QueueHandle_t xQueueServerClient);
+/* TODO: remove this? */
 MODBUS_API int modbus_set_server(modbus_t *ctx, int flag);
 #endif
 

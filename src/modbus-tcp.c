@@ -39,7 +39,8 @@
 # include <netinet/in_systm.h>
 #endif
 
-#if !defined(__freertos__)// # include <netinet/in.h>
+#if !defined(__freertos__)
+# include <netinet/in.h>
 # include <netinet/ip.h>
 # include <netinet/tcp.h>
 # include <arpa/inet.h>
@@ -147,7 +148,6 @@ static int _modbus_tcp_build_response_basis(sft_t *sft, uint8_t *rsp)
     return _MODBUS_TCP_PRESET_RSP_LENGTH;
 }
 
-
 static int _modbus_tcp_prepare_response_tid(const uint8_t *req, int *req_length)
 {
     return (req[0] << 8) + req[1];
@@ -164,15 +164,94 @@ static int _modbus_tcp_send_msg_pre(uint8_t *req, int req_length)
     return req_length;
 }
 
+static int _modbus_tcp_flush(modbus_t *ctx)
+{
+    int rc;
+    int rc_sum = 0;
+
+    do {
+        /* Extract the garbage from the socket */
+        char devnull[MODBUS_TCP_MAX_ADU_LENGTH];
+#if defined(OS_WIN32)
+        /* On Win32, it's a bit more complicated to not wait */
+        fd_set rset;
+        struct timeval tv;
+
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
+        FD_ZERO(&rset);
+        FD_SET(ctx->s, &rset);
+        rc = select(ctx->s+1, &rset, NULL, NULL, &tv);
+        if (rc == -1) {
+            return -1;
+        }
+
+        if (rc == 1) {
+            /* There is data to flush */
+            rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, 0);
+        }
+#elif defined(__freertos__)
+        /* Reduce the receive timeout to zero for flushing */
+        TickType_t xReceiveTimeOut = 0;
+        FreeRTOS_setsockopt(ctx->s, 0, FREERTOS_SO_RCVTIMEO, &xReceiveTimeOut, sizeof(xReceiveTimeOut));
+
+        rc = FreeRTOS_recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, 0);
+
+        /* Restore the timeout to portMAX_DELAY */
+        xReceiveTimeOut = portMAX_DELAY;
+        FreeRTOS_setsockopt(ctx->s, 0, FREERTOS_SO_RCVTIMEO, &xReceiveTimeOut, sizeof(xReceiveTimeOut));
+#else
+        rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, MSG_DONTWAIT);
+#endif
+        if (rc > 0) {
+            rc_sum += rc;
+        }
+    } while (rc == MODBUS_TCP_MAX_ADU_LENGTH);
+
+    return rc_sum;
+}
+
+/* Closes the network connection and socket in TCP mode */
+#if defined(__freertos__)
+static void _modbus_tcp_close(modbus_t *ctx)
+{
+    /* Based on graceful shutdown recommended by FreeRTOS+TCP tutorial:
+     * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/TCP_Networking_Tutorial_Sending_TCP_Data.html */
+    /* TODO: For FreeRTOS, we should initialise ctx->s to something compatible
+     * with it's type (it's a Socket_t, not an int */
+    if (ctx->s != -1) {
+        FreeRTOS_shutdown(ctx->s, FREERTOS_SHUT_RDWR);
+        while(_modbus_tcp_flush(ctx) >= 0) {
+            /* TODO: This should timeout eventually... */
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
+        FreeRTOS_closesocket(ctx->s);
+        ctx->s = -1;
+    }
+}
+#else
+static void _modbus_tcp_close(modbus_t *ctx)
+{
+    if (ctx->s != -1) {
+        shutdown(ctx->s, SHUT_RDWR);
+        close(ctx->s);
+        ctx->s = -1;
+    }
+}
+#endif
+
 static ssize_t _modbus_tcp_send(modbus_t *ctx, const uint8_t *req, int req_length)
 {
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-
-    // /* MSG_NOSIGNAL
-    //    Requests not to send SIGPIPE on errors on stream oriented
-    //    sockets when the other end breaks the connection.  The EPIPE
-    //    error is still returned. */
-    // return send(ctx->s, (const char *)req, req_length, MSG_NOSIGNAL);
+#if defined(__freertos__)
+    /* https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/API/send.html */
+    return FreeRTOS_send(ctx->s, (const char *)req, req_length, 0);
+#else
+    /* MSG_NOSIGNAL
+       Requests not to send SIGPIPE on errors on stream oriented
+       sockets when the other end breaks the connection.  The EPIPE
+       error is still returned. */
+    return send(ctx->s, (const char *)req, req_length, MSG_NOSIGNAL);
+#endif
 }
 
 static int _modbus_tcp_receive(modbus_t *ctx, uint8_t *req) {
@@ -180,8 +259,12 @@ static int _modbus_tcp_receive(modbus_t *ctx, uint8_t *req) {
 }
 
 static ssize_t _modbus_tcp_recv(modbus_t *ctx, uint8_t *rsp, int rsp_length) {
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    // return recv(ctx->s, (char *)rsp, rsp_length, 0);
+#if defined(__freertos__)
+    /* https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/API/recv.html */
+    return FreeRTOS_recv(ctx->s, (char *)rsp, rsp_length, 0);
+#else
+    return recv(ctx->s, (char *)rsp, rsp_length, 0);
+#endif
 }
 
 static int _modbus_tcp_check_integrity(modbus_t *ctx, uint8_t *msg, const int msg_length)
@@ -215,152 +298,215 @@ static int _modbus_tcp_pre_check_confirmation(modbus_t *ctx, const uint8_t *req,
     return 0;
 }
 
+#if defined(__freertos__)
+static int _modbus_tcp_set_ipv4_options(Socket_t s)
+#else
 static int _modbus_tcp_set_ipv4_options(int s)
+#endif
 {
     int rc;
     int option;
 
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    rc = -1;  // added to defeat any accidental calls
+    /* Set the TCP no delay flag */
+    /* This is default behaviour in FreeRTOS unless FREERTOS_SO_SET_FULL_SIZE is set */
+#if !defined(__freertos__)
+    /* SOL_TCP = IPPROTO_TCP */
+    option = 1;
+    rc = setsockopt(s, IPPROTO_TCP, TCP_NODELAY,
+                    (const void *)&option, sizeof(int));
+    if (rc == -1) {
+        return -1;
+    }
+#endif
 
-//     /* Set the TCP no delay flag */
-//     /* SOL_TCP = IPPROTO_TCP */
-//     option = 1;
-//     rc = setsockopt(s, IPPROTO_TCP, TCP_NODELAY,
-//                     (const void *)&option, sizeof(int));
-//     if (rc == -1) {
-//         return -1;
-//     }
+    /* Make the socket non-blocking
+     * If the OS does not offer SOCK_NONBLOCK:
+     * - fall back to setting FIONBIO */
+    /* Do not care about the return value, this is optional */
+#if !defined(SOCK_NONBLOCK) && !defined(__freertos__)
+#if defined(FIONBIO) && defined(OS_WIN32)
+    {
+        /* Setting FIONBIO expects an unsigned long according to MSDN */
+        u_long loption = 1;
+        ioctlsocket(s, FIONBIO, &loption);
+    }
+#else
+    option = 1;
+    ioctl(s, FIONBIO, &option);
+#endif
+#endif
 
-//     /* If the OS does not offer SOCK_NONBLOCK, fall back to setting FIONBIO to
-//      * make sockets non-blocking */
-//     /* Do not care about the return value, this is optional */
-// #if !defined(SOCK_NONBLOCK) && defined(FIONBIO)
-// #ifdef OS_WIN32
-//     {
-//         /* Setting FIONBIO expects an unsigned long according to MSDN */
-//         u_long loption = 1;
-//         ioctlsocket(s, FIONBIO, &loption);
-//     }
-// #else
-//     option = 1;
-//     ioctl(s, FIONBIO, &option);
-// #endif
-// #endif
+#if !defined(OS_WIN32) && !defined(__freertos__)
+    /**
+     * Cygwin defines IPTOS_LOWDELAY but can't handle that flag so it's
+     * necessary to workaround that problem.
+     **/
+    /* Set the IP low delay option */
+    option = IPTOS_LOWDELAY;
+    rc = setsockopt(s, IPPROTO_IP, IP_TOS,
+                    (const void *)&option, sizeof(int));
+    if (rc == -1) {
+        return -1;
+    }
+#endif
 
-// #ifndef OS_WIN32
-//     /**
-//      * Cygwin defines IPTOS_LOWDELAY but can't handle that flag so it's
-//      * necessary to workaround that problem.
-//      **/
-//     /* Set the IP low delay option */
-//     option = IPTOS_LOWDELAY;
-//     rc = setsockopt(s, IPPROTO_IP, IP_TOS,
-//                     (const void *)&option, sizeof(int));
-//     if (rc == -1) {
-//         return -1;
-//     }
-// #endif
+    return 0;
+}
 
-//     return 0;
-// }
+#if defined(__freertos__)
+/* TODO: Match the API to the original _connect(), which uses a socket set */
+static int _connect(Socket_t sockfd, const struct freertos_sockaddr *addr, socklen_t addrlen,
+                    const struct timeval *ro_tv)
+{
+    printf("In connect()\n");
+    printf("> port: %d\n", addr->sin_port);
+    uint8_t *temp = (uint8_t *)pvPortMalloc(16*sizeof(uint8_t));
+    FreeRTOS_inet_ntoa(addr->sin_addr, temp);
+    printf("> addr: %s\n", temp);
 
-// static int _connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen,
-//                     const struct timeval *ro_tv)
-// {
-//     int rc = connect(sockfd, addr, addrlen);
+    /* Returns 0 if connection succeeds; otherwise, one of many errors
+     * since FreeRTOS doesn't implement errno:
+     * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/API/connect.html */
+    int rc = FreeRTOS_connect(sockfd, addr, addrlen);
+    if (rc == -pdFREERTOS_ERRNO_EBADF) {
+        printf("> connect: pdFREERTOS_ERRNO_EBADF\n");
+    } else if (rc == -pdFREERTOS_ERRNO_EINPROGRESS) {
+        printf("> connect: pdFREERTOS_ERRNO_EINPROGRESS\n");
+    } else if (rc == -pdFREERTOS_ERRNO_EAGAIN) {
+        printf("> connect: pdFREERTOS_ERRNO_EAGAIN\n");
+    } else if (rc == -pdFREERTOS_ERRNO_EWOULDBLOCK) {
+        printf("> connect: pdFREERTOS_ERRNO_EWOULDBLOCK\n");
+    } else if (rc == -pdFREERTOS_ERRNO_ETIMEDOUT) {
+        printf("> connect: pdFREERTOS_ERRNO_ETIMEDOUT\n");
+    }
 
-// #ifdef OS_WIN32
-//     int wsaError = 0;
-//     if (rc == -1) {
-//         wsaError = WSAGetLastError();
-//     }
+    if(rc != 0) {
+        return -1;
+    }
 
-//     if (wsaError == WSAEWOULDBLOCK || wsaError == WSAEINPROGRESS) {
-// #else
-//     if (rc == -1 && errno == EINPROGRESS) {
-// #endif
-//         fd_set wset;
-//         int optval;
-//         socklen_t optlen = sizeof(optval);
-//         struct timeval tv = *ro_tv;
-
-//         /* Wait to be available in writing */
-//         FD_ZERO(&wset);
-//         FD_SET(sockfd, &wset);
-//         rc = select(sockfd + 1, NULL, &wset, NULL, &tv);
-//         if (rc <= 0) {
-//             /* Timeout or fail */
-//             return -1;
-//         }
-
-//         /* The connection is established if SO_ERROR and optval are set to 0 */
-//         rc = getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *)&optval, &optlen);
-//         if (rc == 0 && optval == 0) {
-//             return 0;
-//         } else {
-//             errno = ECONNREFUSED;
-//             return -1;
-//         }
-//     }
     return rc;
 }
+#else
+static int _connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen,
+                    const struct timeval *ro_tv)
+{
+    int rc = connect(sockfd, addr, addrlen);
+
+#ifdef OS_WIN32
+    int wsaError = 0;
+    if (rc == -1) {
+        wsaError = WSAGetLastError();
+    }
+
+    if (wsaError == WSAEWOULDBLOCK || wsaError == WSAEINPROGRESS) {
+#else
+    if (rc == -1 && errno == EINPROGRESS) {
+#endif
+        fd_set wset;
+        int optval;
+        socklen_t optlen = sizeof(optval);
+        struct timeval tv = *ro_tv;
+
+        /* Wait to be available in writing */
+        FD_ZERO(&wset);
+        FD_SET(sockfd, &wset);
+        rc = select(sockfd + 1, NULL, &wset, NULL, &tv);
+        if (rc <= 0) {
+            /* Timeout or fail */
+            return -1;
+        }
+
+        /* The connection is established if SO_ERROR and optval are set to 0 */
+        rc = getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *)&optval, &optlen);
+        if (rc == 0 && optval == 0) {
+            return 0;
+        } else {
+            errno = ECONNREFUSED;
+            return -1;
+        }
+    }
+    return rc;
+}
+#endif
 
 /* Establishes a modbus TCP connection with a Modbus server. */
 static int _modbus_tcp_connect(modbus_t *ctx)
 {
     int rc;
+    int flags = 0;
 
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    rc = -1;  // added to defeat any accidental calls
-    return rc;
+#if defined(__freertos__)
+    struct freertos_sockaddr addr;
+#else
+    /* Specialized version of sockaddr for Internet socket address (same size) */
+    struct sockaddr_in addr;
+    flags = SOCK_STREAM;
+#endif
+    modbus_tcp_t *ctx_tcp = ctx->backend_data;
 
-//     /* Specialized version of sockaddr for Internet socket address (same size) */
-//     struct sockaddr_in addr;
-//     modbus_tcp_t *ctx_tcp = ctx->backend_data;
-//     int flags = SOCK_STREAM;
+#ifdef OS_WIN32
+    if (_modbus_tcp_init_win32() == -1) {
+        return -1;
+    }
+#endif
 
-// #ifdef OS_WIN32
-//     if (_modbus_tcp_init_win32() == -1) {
-//         return -1;
-//     }
-// #endif
+#ifdef SOCK_CLOEXEC
+    flags |= SOCK_CLOEXEC;
+#endif
 
-// #ifdef SOCK_CLOEXEC
-//     flags |= SOCK_CLOEXEC;
-// #endif
+#ifdef SOCK_NONBLOCK
+    flags |= SOCK_NONBLOCK;
+#endif
 
-// #ifdef SOCK_NONBLOCK
-//     flags |= SOCK_NONBLOCK;
-// #endif
+#if defined(__freertos__)
+    ctx->s = FreeRTOS_socket(FREERTOS_AF_INET,
+                             FREERTOS_SOCK_STREAM,
+                             FREERTOS_IPPROTO_TCP);
+    configASSERT(ctx->s != FREERTOS_INVALID_SOCKET)
+#else
+    ctx->s = socket(PF_INET, flags, 0);
+    if (ctx->s == -1) {
+        return -1;
+    }
+#endif
 
-//     ctx->s = socket(PF_INET, flags, 0);
-//     if (ctx->s == -1) {
-//         return -1;
-//     }
+    rc = _modbus_tcp_set_ipv4_options(ctx->s);
+    if (rc == -1) {
+#if defined(__freertos__)
+        _modbus_tcp_close(ctx->s);
+#else
+        close(ctx->s);
+#endif
+        ctx->s = -1;
+        return -1;
+    }
 
-//     rc = _modbus_tcp_set_ipv4_options(ctx->s);
-//     if (rc == -1) {
-//         close(ctx->s);
-//         ctx->s = -1;
-//         return -1;
-//     }
+    if (ctx->debug) {
+        printf("Connecting to %s:%d\n", ctx_tcp->ip, ctx_tcp->port);
+    }
 
-//     if (ctx->debug) {
-//         printf("Connecting to %s:%d\n", ctx_tcp->ip, ctx_tcp->port);
-//     }
+#if defined(__freertos__)
+    addr.sin_port = FreeRTOS_htons(ctx_tcp->port);
+    addr.sin_addr = FreeRTOS_inet_addr(ctx_tcp->ip);
+    rc = _connect(ctx->s, &addr, sizeof(addr), &ctx->response_timeout);
+    if (rc == -1) {
+        _modbus_tcp_close(ctx->s);
+        ctx->s = -1;
+        return -1;
+    }
+#else
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(ctx_tcp->port);
+    addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
+    rc = _connect(ctx->s, (struct sockaddr *)&addr, sizeof(addr), &ctx->response_timeout);
+    if (rc == -1) {
+        close(ctx->s);
+        ctx->s = -1;
+        return -1;
+    }
+#endif
 
-//     addr.sin_family = AF_INET;
-//     addr.sin_port = htons(ctx_tcp->port);
-//     addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
-//     rc = _connect(ctx->s, (struct sockaddr *)&addr, sizeof(addr), &ctx->response_timeout);
-//     if (rc == -1) {
-//         close(ctx->s);
-//         ctx->s = -1;
-//         return -1;
-//     }
-
-//     return 0;
+    return 0;
 }
 
 /* Establishes a modbus TCP PI connection with a Modbus server. */
@@ -368,419 +514,473 @@ static int _modbus_tcp_pi_connect(modbus_t *ctx)
 {
     int rc;
 
-    /* TEMP REMOVAL: To support FreeRTOS port development */
+#if defined(__freertos__)
+    /* TODO:  Implement TCP PI */
     rc = -1;  // added to defeat any accidental calls
     return rc;
+#else
+    struct addrinfo *ai_list;
+    struct addrinfo *ai_ptr;
+    struct addrinfo ai_hints;
+    modbus_tcp_pi_t *ctx_tcp_pi = ctx->backend_data;
 
-//     struct addrinfo *ai_list;
-//     struct addrinfo *ai_ptr;
-//     struct addrinfo ai_hints;
-//     modbus_tcp_pi_t *ctx_tcp_pi = ctx->backend_data;
+#ifdef OS_WIN32
+    if (_modbus_tcp_init_win32() == -1) {
+        return -1;
+    }
+#endif
 
-// #ifdef OS_WIN32
-//     if (_modbus_tcp_init_win32() == -1) {
-//         return -1;
-//     }
-// #endif
+    memset(&ai_hints, 0, sizeof(ai_hints));
+#ifdef AI_ADDRCONFIG
+    ai_hints.ai_flags |= AI_ADDRCONFIG;
+#endif
+    ai_hints.ai_family = AF_UNSPEC;
+    ai_hints.ai_socktype = SOCK_STREAM;
+    ai_hints.ai_addr = NULL;
+    ai_hints.ai_canonname = NULL;
+    ai_hints.ai_next = NULL;
 
-//     memset(&ai_hints, 0, sizeof(ai_hints));
-// #ifdef AI_ADDRCONFIG
-//     ai_hints.ai_flags |= AI_ADDRCONFIG;
-// #endif
-//     ai_hints.ai_family = AF_UNSPEC;
-//     ai_hints.ai_socktype = SOCK_STREAM;
-//     ai_hints.ai_addr = NULL;
-//     ai_hints.ai_canonname = NULL;
-//     ai_hints.ai_next = NULL;
+    ai_list = NULL;
+    rc = getaddrinfo(ctx_tcp_pi->node, ctx_tcp_pi->service,
+                     &ai_hints, &ai_list);
+    if (rc != 0) {
+        if (ctx->debug) {
+            fprintf(stderr, "Error returned by getaddrinfo: %s\n", gai_strerror(rc));
+        }
+        errno = ECONNREFUSED;
+        return -1;
+    }
 
-//     ai_list = NULL;
-//     rc = getaddrinfo(ctx_tcp_pi->node, ctx_tcp_pi->service,
-//                      &ai_hints, &ai_list);
-//     if (rc != 0) {
-//         if (ctx->debug) {
-//             fprintf(stderr, "Error returned by getaddrinfo: %s\n", gai_strerror(rc));
-//         }
-//         errno = ECONNREFUSED;
-//         return -1;
-//     }
+    for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next) {
+        int flags = ai_ptr->ai_socktype;
+        int s;
 
-//     for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next) {
-//         int flags = ai_ptr->ai_socktype;
-//         int s;
+#ifdef SOCK_CLOEXEC
+        flags |= SOCK_CLOEXEC;
+#endif
 
-// #ifdef SOCK_CLOEXEC
-//         flags |= SOCK_CLOEXEC;
-// #endif
+#ifdef SOCK_NONBLOCK
+        flags |= SOCK_NONBLOCK;
+#endif
 
-// #ifdef SOCK_NONBLOCK
-//         flags |= SOCK_NONBLOCK;
-// #endif
+        s = socket(ai_ptr->ai_family, flags, ai_ptr->ai_protocol);
+        if (s < 0)
+            continue;
 
-//         s = socket(ai_ptr->ai_family, flags, ai_ptr->ai_protocol);
-//         if (s < 0)
-//             continue;
+        if (ai_ptr->ai_family == AF_INET)
+            _modbus_tcp_set_ipv4_options(s);
 
-//         if (ai_ptr->ai_family == AF_INET)
-//             _modbus_tcp_set_ipv4_options(s);
+        if (ctx->debug) {
+            printf("Connecting to [%s]:%s\n", ctx_tcp_pi->node, ctx_tcp_pi->service);
+        }
 
-//         if (ctx->debug) {
-//             printf("Connecting to [%s]:%s\n", ctx_tcp_pi->node, ctx_tcp_pi->service);
-//         }
+        rc = _connect(s, ai_ptr->ai_addr, ai_ptr->ai_addrlen, &ctx->response_timeout);
+        if (rc == -1) {
+            close(s);
+            continue;
+        }
 
-//         rc = _connect(s, ai_ptr->ai_addr, ai_ptr->ai_addrlen, &ctx->response_timeout);
-//         if (rc == -1) {
-//             close(s);
-//             continue;
-//         }
+        ctx->s = s;
+        break;
+    }
 
-//         ctx->s = s;
-//         break;
-//     }
+    freeaddrinfo(ai_list);
 
-//     freeaddrinfo(ai_list);
+    if (ctx->s < 0) {
+        return -1;
+    }
 
-//     if (ctx->s < 0) {
-//         return -1;
-//     }
-
-//     return 0;
-}
-
-/* Closes the network connection and socket in TCP mode */
-static void _modbus_tcp_close(modbus_t *ctx)
-{
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    // if (ctx->s != -1) {
-    //     shutdown(ctx->s, SHUT_RDWR);
-    //     close(ctx->s);
-    //     ctx->s = -1;
-    // }
-}
-
-static int _modbus_tcp_flush(modbus_t *ctx)
-{
-    int rc;
-    int rc_sum = 0;
-
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    rc = -1;  // added to defeat any accidental calls
-    return rc;
-
-//     do {
-//         /* Extract the garbage from the socket */
-//         char devnull[MODBUS_TCP_MAX_ADU_LENGTH];
-// #ifndef OS_WIN32
-//         rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, MSG_DONTWAIT);
-// #else
-//         /* On Win32, it's a bit more complicated to not wait */
-//         fd_set rset;
-//         struct timeval tv;
-
-//         tv.tv_sec = 0;
-//         tv.tv_usec = 0;
-//         FD_ZERO(&rset);
-//         FD_SET(ctx->s, &rset);
-//         rc = select(ctx->s+1, &rset, NULL, NULL, &tv);
-//         if (rc == -1) {
-//             return -1;
-//         }
-
-//         if (rc == 1) {
-//             /* There is data to flush */
-//             rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, 0);
-//         }
-// #endif
-//         if (rc > 0) {
-//             rc_sum += rc;
-//         }
-//     } while (rc == MODBUS_TCP_MAX_ADU_LENGTH);
-
-//     return rc_sum;
+    return 0;
+#endif /* defined (__freertos__) */
 }
 
 /* Listens for any request from one or many modbus masters in TCP */
+#if defined(__freertos__)
+Socket_t modbus_tcp_listen(modbus_t *ctx, int nb_connection)
+#else
 int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
+#endif
 {
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    int rc = -1;  // added to defeat any accidental calls
-    return rc;
+    printf("In listen()\n");
+#if defined(__freertos__)
+    Socket_t new_s;
+    struct freertos_sockaddr addr;
+    BaseType_t enable;
+    int flags;
+#else
+    int new_s;
+    struct sockaddr_in addr;
+    int enable;
+    int flags;
+#endif
 
-//     int new_s;
-//     int enable;
-//     int flags;
-//     struct sockaddr_in addr;
-//     modbus_tcp_t *ctx_tcp;
+    modbus_tcp_t *ctx_tcp;
 
-//     if (ctx == NULL) {
-//         errno = EINVAL;
-//         return -1;
-//     }
+#if defined(__freertos__)
+    configASSERT(ctx != NULL);
+#else
+    if (ctx == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+#endif
 
-//     ctx_tcp = ctx->backend_data;
+    ctx_tcp = ctx->backend_data;
 
-// #ifdef OS_WIN32
-//     if (_modbus_tcp_init_win32() == -1) {
-//         return -1;
-//     }
-// #endif
+#ifdef OS_WIN32
+    if (_modbus_tcp_init_win32() == -1) {
+        return -1;
+    }
+#endif
 
-//     flags = SOCK_STREAM;
+#if defined(__freertos__)
+    new_s = FreeRTOS_socket(FREERTOS_AF_INET,
+                            FREERTOS_SOCK_STREAM,
+                            FREERTOS_IPPROTO_TCP);
+    if (new_s == FREERTOS_INVALID_SOCKET) {
+        return NULL;
+    }
 
-// #ifdef SOCK_CLOEXEC
-//     flags |= SOCK_CLOEXEC;
-// #endif
+    enable = pdTRUE;
+    if (FreeRTOS_setsockopt(new_s, 0, FREERTOS_SO_REUSE_LISTEN_SOCKET,
+                        (void *) &enable, sizeof(enable)) == -FREERTOS_EINVAL) {
+        _modbus_tcp_close(new_s);
+        return NULL;
+    }
 
-//     new_s = socket(PF_INET, flags, IPPROTO_TCP);
-//     if (new_s == -1) {
-//         return -1;
-//     }
+    /* If the modbus port is < to 1024, we need the setuid root. */
+    printf("> binding to %d\n", ctx_tcp->port);
+    addr.sin_port = FreeRTOS_htons(ctx_tcp->port);
+    if (ctx_tcp->ip[0] != '0') {
+        /* FreeRTOS doesn't support INADDR_ANY, but not binding to an address
+         * seems to be the default behaviour:
+         * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/TCP_Networking_Tutorial_TCP_Client_and_Server.html */
 
-//     enable = 1;
-//     if (setsockopt(new_s, SOL_SOCKET, SO_REUSEADDR,
-//                    (char *)&enable, sizeof(enable)) == -1) {
-//         close(new_s);
-//         return -1;
-//     }
+        /* Listen only specified IP address */
+        printf("> binding to %s\n", ctx_tcp->ip);
+        addr.sin_addr = FreeRTOS_inet_addr(ctx_tcp->ip);
+    }
+    if (FreeRTOS_bind(new_s, &addr, sizeof(addr)) != 0) {
+        _modbus_tcp_close(new_s);
+        return NULL;
+    }
 
-//     memset(&addr, 0, sizeof(addr));
-//     addr.sin_family = AF_INET;
-//     /* If the modbus port is < to 1024, we need the setuid root. */
-//     addr.sin_port = htons(ctx_tcp->port);
-//     if (ctx_tcp->ip[0] == '0') {
-//         /* Listen any addresses */
-//         addr.sin_addr.s_addr = htonl(INADDR_ANY);
-//     } else {
-//         /* Listen only specified IP address */
-//         addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
-//     }
-//     if (bind(new_s, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-//         close(new_s);
-//         return -1;
-//     }
+    if (FreeRTOS_listen(new_s, (BaseType_t)nb_connection) != 0) {
+        _modbus_tcp_close(new_s);
+        return NULL;
+    }
+#else
+    flags = SOCK_STREAM;
 
-//     if (listen(new_s, nb_connection) == -1) {
-//         close(new_s);
-//         return -1;
-//     }
+#ifdef SOCK_CLOEXEC
+    flags |= SOCK_CLOEXEC;
+#endif
 
-//     return new_s;
+    new_s = socket(PF_INET, flags, IPPROTO_TCP);
+    if (new_s == -1) {
+        return -1;
+    }
+
+    enable = 1;
+    if (setsockopt(new_s, SOL_SOCKET, SO_REUSEADDR,
+                   (char *)&enable, sizeof(enable)) == -1) {
+        close(new_s);
+        return -1;
+    }
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    /* If the modbus port is < to 1024, we need the setuid root. */
+    addr.sin_port = htons(ctx_tcp->port);
+    if (ctx_tcp->ip[0] == '0') {
+        /* Listen any addresses */
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    } else {
+        /* Listen only specified IP address */
+        addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
+    }
+    if (bind(new_s, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        close(new_s);
+        return -1;
+    }
+
+    if (listen(new_s, nb_connection) == -1) {
+        close(new_s);
+        return -1;
+    }
+#endif
+
+    printf("> listening...\n");
+    return new_s;
 }
 
 int modbus_tcp_pi_listen(modbus_t *ctx, int nb_connection)
 {
     int rc;
 
-    /* TEMP REMOVAL: To support FreeRTOS port development */
+#if defined(__freertos__)
+    /* TODO: Implement TCP PI */
     rc = -1;  // added to defeat any accidental calls
     return rc;
+#else
+    struct addrinfo *ai_list;
+    struct addrinfo *ai_ptr;
+    struct addrinfo ai_hints;
+    const char *node;
+    const char *service;
+    int new_s;
+    modbus_tcp_pi_t *ctx_tcp_pi;
 
-//     struct addrinfo *ai_list;
-//     struct addrinfo *ai_ptr;
-//     struct addrinfo ai_hints;
-//     const char *node;
-//     const char *service;
-//     int new_s;
-//     modbus_tcp_pi_t *ctx_tcp_pi;
+    if (ctx == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
 
-//     if (ctx == NULL) {
-//         errno = EINVAL;
-//         return -1;
-//     }
+    ctx_tcp_pi = ctx->backend_data;
 
-//     ctx_tcp_pi = ctx->backend_data;
+#ifdef OS_WIN32
+    if (_modbus_tcp_init_win32() == -1) {
+        return -1;
+    }
+#endif
 
-// #ifdef OS_WIN32
-//     if (_modbus_tcp_init_win32() == -1) {
-//         return -1;
-//     }
-// #endif
+    if (ctx_tcp_pi->node[0] == 0) {
+        node = NULL; /* == any */
+    } else {
+        node = ctx_tcp_pi->node;
+    }
 
-//     if (ctx_tcp_pi->node[0] == 0) {
-//         node = NULL; /* == any */
-//     } else {
-//         node = ctx_tcp_pi->node;
-//     }
+    if (ctx_tcp_pi->service[0] == 0) {
+        service = "502";
+    } else {
+        service = ctx_tcp_pi->service;
+    }
 
-//     if (ctx_tcp_pi->service[0] == 0) {
-//         service = "502";
-//     } else {
-//         service = ctx_tcp_pi->service;
-//     }
+    memset(&ai_hints, 0, sizeof (ai_hints));
+    /* If node is not NULL, than the AI_PASSIVE flag is ignored. */
+    ai_hints.ai_flags |= AI_PASSIVE;
+#ifdef AI_ADDRCONFIG
+    ai_hints.ai_flags |= AI_ADDRCONFIG;
+#endif
+    ai_hints.ai_family = AF_UNSPEC;
+    ai_hints.ai_socktype = SOCK_STREAM;
+    ai_hints.ai_addr = NULL;
+    ai_hints.ai_canonname = NULL;
+    ai_hints.ai_next = NULL;
 
-//     memset(&ai_hints, 0, sizeof (ai_hints));
-//     /* If node is not NULL, than the AI_PASSIVE flag is ignored. */
-//     ai_hints.ai_flags |= AI_PASSIVE;
-// #ifdef AI_ADDRCONFIG
-//     ai_hints.ai_flags |= AI_ADDRCONFIG;
-// #endif
-//     ai_hints.ai_family = AF_UNSPEC;
-//     ai_hints.ai_socktype = SOCK_STREAM;
-//     ai_hints.ai_addr = NULL;
-//     ai_hints.ai_canonname = NULL;
-//     ai_hints.ai_next = NULL;
+    ai_list = NULL;
+    rc = getaddrinfo(node, service, &ai_hints, &ai_list);
+    if (rc != 0) {
+        if (ctx->debug) {
+            fprintf(stderr, "Error returned by getaddrinfo: %s\n", gai_strerror(rc));
+        }
+        errno = ECONNREFUSED;
+        return -1;
+    }
 
-//     ai_list = NULL;
-//     rc = getaddrinfo(node, service, &ai_hints, &ai_list);
-//     if (rc != 0) {
-//         if (ctx->debug) {
-//             fprintf(stderr, "Error returned by getaddrinfo: %s\n", gai_strerror(rc));
-//         }
-//         errno = ECONNREFUSED;
-//         return -1;
-//     }
+    new_s = -1;
+    for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next) {
+        int flags = ai_ptr->ai_socktype;
+        int s;
 
-//     new_s = -1;
-//     for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next) {
-//         int flags = ai_ptr->ai_socktype;
-//         int s;
+#ifdef SOCK_CLOEXEC
+        flags |= SOCK_CLOEXEC;
+#endif
 
-// #ifdef SOCK_CLOEXEC
-//         flags |= SOCK_CLOEXEC;
-// #endif
+        s = socket(ai_ptr->ai_family, flags, ai_ptr->ai_protocol);
+        if (s < 0) {
+            if (ctx->debug) {
+                perror("socket");
+            }
+            continue;
+        } else {
+            int enable = 1;
+            rc = setsockopt(s, SOL_SOCKET, SO_REUSEADDR,
+                            (void *)&enable, sizeof (enable));
+            if (rc != 0) {
+                close(s);
+                if (ctx->debug) {
+                    perror("setsockopt");
+                }
+                continue;
+            }
+        }
 
-//         s = socket(ai_ptr->ai_family, flags, ai_ptr->ai_protocol);
-//         if (s < 0) {
-//             if (ctx->debug) {
-//                 perror("socket");
-//             }
-//             continue;
-//         } else {
-//             int enable = 1;
-//             rc = setsockopt(s, SOL_SOCKET, SO_REUSEADDR,
-//                             (void *)&enable, sizeof (enable));
-//             if (rc != 0) {
-//                 close(s);
-//                 if (ctx->debug) {
-//                     perror("setsockopt");
-//                 }
-//                 continue;
-//             }
-//         }
+        rc = bind(s, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
+        if (rc != 0) {
+            close(s);
+            if (ctx->debug) {
+                perror("bind");
+            }
+            continue;
+        }
 
-//         rc = bind(s, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
-//         if (rc != 0) {
-//             close(s);
-//             if (ctx->debug) {
-//                 perror("bind");
-//             }
-//             continue;
-//         }
+        rc = listen(s, nb_connection);
+        if (rc != 0) {
+            close(s);
+            if (ctx->debug) {
+                perror("listen");
+            }
+            continue;
+        }
 
-//         rc = listen(s, nb_connection);
-//         if (rc != 0) {
-//             close(s);
-//             if (ctx->debug) {
-//                 perror("listen");
-//             }
-//             continue;
-//         }
+        new_s = s;
+        break;
+    }
+    freeaddrinfo(ai_list);
 
-//         new_s = s;
-//         break;
-//     }
-//     freeaddrinfo(ai_list);
+    if (new_s < 0) {
+        return -1;
+    }
 
-//     if (new_s < 0) {
-//         return -1;
-//     }
-
-//     return new_s;
+    return new_s;
+#endif /* defined(__freertos__) */
 }
 
+#if defined(__freertos__)
+Socket_t modbus_tcp_accept(modbus_t *ctx, Socket_t *s)
+{
+    printf("In accept()\n");
+    struct freertos_sockaddr addr;
+    socklen_t addrlen = sizeof(addr);
+    TickType_t xReceiveTimeOut = portMAX_DELAY;
+
+    if (ctx == NULL) {
+        return NULL;
+    }
+
+    /* Set a time out so accept() will just wait for a connection. */
+    FreeRTOS_setsockopt(*s, 0, FREERTOS_SO_RCVTIMEO, &xReceiveTimeOut, sizeof(xReceiveTimeOut));
+
+    ctx->s = FreeRTOS_accept(*s, &addr, &addrlen);
+    configASSERT(ctx->s != FREERTOS_INVALID_SOCKET && ctx->s != NULL);
+
+    if (ctx->debug) {
+        uint8_t *pucBuffer = (uint8_t *)pvPortMalloc(16 * sizeof(uint8_t));
+        FreeRTOS_inet_ntoa(addr.sin_addr, pucBuffer);
+        printf("The client connection from %s is accepted\n", pucBuffer);
+        vPortFree(pucBuffer);
+    }
+
+    return ctx->s;
+}
+#else
 int modbus_tcp_accept(modbus_t *ctx, int *s)
 {
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    int rc = -1;  // added to defeat any accidental calls
-    return rc;
+    struct sockaddr_in addr;
+    socklen_t addrlen;
 
-//     struct sockaddr_in addr;
-//     socklen_t addrlen;
+    if (ctx == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
 
-//     if (ctx == NULL) {
-//         errno = EINVAL;
-//         return -1;
-//     }
+    addrlen = sizeof(addr);
+#ifdef HAVE_ACCEPT4
+    /* Inherit socket flags and use accept4 call */
+    ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
+#else
+    ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
+#endif
 
-//     addrlen = sizeof(addr);
-// #ifdef HAVE_ACCEPT4
-//     /* Inherit socket flags and use accept4 call */
-//     ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
-// #else
-//     ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
-// #endif
+    if (ctx->s == -1) {
+        return -1;
+    }
 
-//     if (ctx->s == -1) {
-//         return -1;
-//     }
+    if (ctx->debug) {
+        printf("The client connection from %s is accepted\n",
+               inet_ntoa(addr.sin_addr));
+    }
 
-//     if (ctx->debug) {
-//         printf("The client connection from %s is accepted\n",
-//                inet_ntoa(addr.sin_addr));
-//     }
-
-//     return ctx->s;
+    return ctx->s;
 }
+#endif
 
 int modbus_tcp_pi_accept(modbus_t *ctx, int *s)
 {
-    /* TEMP REMOVAL: To support FreeRTOS port development */
+#if defined(__freertos__)
+    /* TODO: implement tcp pi */
     int rc = -1;  // added to defeat any accidental calls
     return rc;
+#else
+    struct sockaddr_storage addr;
+    socklen_t addrlen;
 
-//     struct sockaddr_storage addr;
-//     socklen_t addrlen;
+    if (ctx == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
 
-//     if (ctx == NULL) {
-//         errno = EINVAL;
-//         return -1;
-//     }
+    addrlen = sizeof(addr);
+#ifdef HAVE_ACCEPT4
+    /* Inherit socket flags and use accept4 call */
+    ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
+#else
+    ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
+#endif
 
-//     addrlen = sizeof(addr);
-// #ifdef HAVE_ACCEPT4
-//     /* Inherit socket flags and use accept4 call */
-//     ctx->s = accept4(*s, (struct sockaddr *)&addr, &addrlen, SOCK_CLOEXEC);
-// #else
-//     ctx->s = accept(*s, (struct sockaddr *)&addr, &addrlen);
-// #endif
+    if (ctx->s == -1) {
+        return -1;
+    }
 
-//     if (ctx->s == -1) {
-//         return -1;
-//     }
+    if (ctx->debug) {
+        printf("The client connection is accepted.\n");
+    }
 
-//     if (ctx->debug) {
-//         printf("The client connection is accepted.\n");
-//     }
-
-//     return ctx->s;
+    return ctx->s;
+#endif
 }
 
+#if defined(__freertos__)
+static int _modbus_tcp_select(modbus_t *ctx, SocketSet_t rset, struct timeval *tv, int length_to_read)
+{
+    int s_rc;
+    /* const TickType_t xBlockTimeTicks = pdMS_TO_TICKS( */
+    /*         (ctx->response_timeout.tv_sec * 1000) + */
+    /*         (ctx->response_timeout.tv_usec / 1000)); */
+    const TickType_t xBlockTimeTicks = portMAX_DELAY;
+    /* If select is interrupted by a signal, then recreate the set and try again */
+    while ((s_rc = FreeRTOS_select(rset, xBlockTimeTicks)) == -pdFREERTOS_ERRNO_EINTR) {
+        if (ctx->debug) {
+            fprintf(stderr, "A non blocked signal was caught\n");
+        }
+        /* Necessary after an error */
+        rset = FreeRTOS_CreateSocketSet();
+        FreeRTOS_FD_SET(ctx->s, rset, eSELECT_READ);
+    }
+
+    /* if select() times out, return -1 */
+    if (s_rc == 0) {
+        return -1;
+    }
+
+    return s_rc;
+}
+#else
 static int _modbus_tcp_select(modbus_t *ctx, fd_set *rset, struct timeval *tv, int length_to_read)
 {
-    /* TEMP REMOVAL: To support FreeRTOS port development */
-    int rc = -1;  // added to defeat any accidental calls
-    return rc;
+    int s_rc;
+    while ((s_rc = select(ctx->s+1, rset, NULL, NULL, tv)) == -1) {
+        if (errno == EINTR) {
+            if (ctx->debug) {
+                fprintf(stderr, "A non blocked signal was caught\n");
+            }
+            /* Necessary after an error */
+            FD_ZERO(rset);
+            FD_SET(ctx->s, rset);
+        } else {
+            return -1;
+        }
+    }
 
-//     int s_rc;
-//     while ((s_rc = select(ctx->s+1, rset, NULL, NULL, tv)) == -1) {
-//         if (errno == EINTR) {
-//             if (ctx->debug) {
-//                 fprintf(stderr, "A non blocked signal was caught\n");
-//             }
-//             /* Necessary after an error */
-//             FD_ZERO(rset);
-//             FD_SET(ctx->s, rset);
-//         } else {
-//             return -1;
-//         }
-//     }
+    if (s_rc == 0) {
+        errno = ETIMEDOUT;
+        return -1;
+    }
 
-//     if (s_rc == 0) {
-//         errno = ETIMEDOUT;
-//         return -1;
-//     }
-
-//     return s_rc;
+    return s_rc;
 }
+#endif
 
 static void _modbus_tcp_free(modbus_t *ctx) {
     vPortFree(ctx->backend_data);
@@ -858,7 +1058,11 @@ modbus_t* modbus_new_tcp(const char *ip, int port)
     }
 #endif
 
+#if defined(__freertos__)
     ctx = (modbus_t *)pvPortMalloc(sizeof(modbus_t));
+#else
+    ctx = (modbus_t *)malloc(sizeof(modbus_t));
+#endif
     if (ctx == NULL) {
         return NULL;
     }
@@ -869,7 +1073,11 @@ modbus_t* modbus_new_tcp(const char *ip, int port)
 
     ctx->backend = &_modbus_tcp_backend;
 
+#if defined(__freertos__)
     ctx->backend_data = (modbus_tcp_t *)pvPortMalloc(sizeof(modbus_tcp_t));
+#else
+    ctx->backend_data = (modbus_tcp_t *)malloc(sizeof(modbus_tcp_t));
+#endif
     if (ctx->backend_data == NULL) {
         modbus_free(ctx);
         errno = ENOMEM;
@@ -898,12 +1106,6 @@ modbus_t* modbus_new_tcp(const char *ip, int port)
     }
     ctx_tcp->port = port;
     ctx_tcp->t_id = 0;
-
-#if defined(__freertos__)
-    ctx->xQueueClientServer = NULL;
-    ctx->xQueueServerClient = NULL;
-    ctx->server = pdFALSE;
-#endif
 
     return ctx;
 }

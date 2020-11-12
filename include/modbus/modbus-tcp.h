@@ -40,8 +40,13 @@ MODBUS_BEGIN_DECLS
 #define MODBUS_TCP_MAX_ADU_LENGTH  260
 
 MODBUS_API modbus_t* modbus_new_tcp(const char *ip_address, int port);
+#if defined(__freertos__)
+MODBUS_API Socket_t modbus_tcp_listen(modbus_t *ctx, int nb_connection);
+MODBUS_API Socket_t modbus_tcp_accept(modbus_t *ctx, Socket_t *s);
+#else
 MODBUS_API int modbus_tcp_listen(modbus_t *ctx, int nb_connection);
 MODBUS_API int modbus_tcp_accept(modbus_t *ctx, int *s);
+#endif
 
 MODBUS_API modbus_t* modbus_new_tcp_pi(const char *node, const char *service);
 MODBUS_API int modbus_tcp_pi_listen(modbus_t *ctx, int nb_connection);

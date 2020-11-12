@@ -84,7 +84,11 @@ typedef struct _modbus_backend {
     int (*connect) (modbus_t *ctx);
     void (*close) (modbus_t *ctx);
     int (*flush) (modbus_t *ctx);
+#if defined(__freertos__)
+    int (*select) (modbus_t *ctx, SocketSet_t rset, struct timeval *tv, int msg_length);
+#else
     int (*select) (modbus_t *ctx, fd_set *rset, struct timeval *tv, int msg_length);
+#endif
     void (*free) (modbus_t *ctx);
 } modbus_backend_t;
 
@@ -92,7 +96,11 @@ struct _modbus {
     /* Slave address */
     int slave;
     /* Socket or file descriptor */
+#if defined(__freertos__)
+    Socket_t s;
+#else
     int s;
+#endif
     int debug;
     int error_recovery;
     struct timeval response_timeout;
@@ -100,11 +108,6 @@ struct _modbus {
     struct timeval indication_timeout;
     const modbus_backend_t *backend;
     void *backend_data;
-#if defined(__freertos__)
-    int server;
-    QueueHandle_t xQueueClientServer;
-    QueueHandle_t xQueueServerClient;
-#endif
 };
 
 void _modbus_init_common(modbus_t *ctx);
