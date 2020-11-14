@@ -426,25 +426,16 @@ int _modbus_receive_msg(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type)
 
     while (length_to_read != 0) {
         rc = ctx->backend->select(ctx, rset, p_tv, length_to_read);
-        if (rc == -1) {
-            _error_print(ctx, "select");
-            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) {
-                /* int saved_errno = errno; */
-
-                /* Theoretically, with FreeRTOS we only get here
-                 * if the select() function times out, so let's try
-                 * to handle that */
-                _sleep_response_timeout(ctx);
-                modbus_flush(ctx);
-                /* if (errno == ETIMEDOUT) { */
-                /*     _sleep_response_timeout(ctx); */
-                /*     modbus_flush(ctx); */
-                /* } else if (errno == EBADF) { */
-                /*     modbus_close(ctx); */
-                /*     modbus_connect(ctx); */
-                /* } */
-                /* errno = saved_errno; */
-            }
+        if (rc == 0) {
+            /* TODO: Print error for timeout */
+            _sleep_response_timeout(ctx);
+            modbus_flush(ctx);
+        } else if (rc == -pdFREERTOS_ERRNO_EINTR) {
+            /* TODO: Print error for interrupt */
+            modbus_close(ctx);
+            modbus_connect(ctx);
+        } else if (rc != 1) {
+            /* TODO: Print error */
             return -1;
         }
 
