@@ -191,6 +191,24 @@ static int _modbus_tcp_flush(modbus_t *ctx)
             rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, 0);
         }
 #elif defined(__freertos__)
+        /* set time for FreeRTOS_select() to block */
+        const TickType_t xBlockTimeTicks = 0;
+
+        /* Create a socket set */
+        SocketSet_t rset = FreeRTOS_CreateSocketSet(); // posix: file descriptor set
+
+        /* Add a socket (posix: file descriptor) to the set */
+        FreeRTOS_FD_SET(ctx->s, rset, eSELECT_READ);
+
+        /* Call select().  Return an error if select doesnt return 1. */
+        rc = FreeRTOS_select(rset, xBlockTimeTicks);
+        if (rc != 1) {
+            /* TODO: Print error */
+            return -1;
+        }
+
+        /* There is data to flush */
+
         /* Reduce the receive timeout to zero for flushing */
         TickType_t xReceiveTimeOut = 0;
         FreeRTOS_setsockopt(ctx->s, 0, FREERTOS_SO_RCVTIMEO, &xReceiveTimeOut, sizeof(xReceiveTimeOut));
@@ -217,16 +235,14 @@ static void _modbus_tcp_close(modbus_t *ctx)
 {
     /* Based on graceful shutdown recommended by FreeRTOS+TCP tutorial:
      * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/TCP_Networking_Tutorial_Sending_TCP_Data.html */
-    /* TODO: For FreeRTOS, we should initialise ctx->s to something compatible
-     * with it's type (it's a Socket_t, not an int */
-    if (ctx->s != -1) {
+    if (ctx->s != NULL) {
         FreeRTOS_shutdown(ctx->s, FREERTOS_SHUT_RDWR);
         while(_modbus_tcp_flush(ctx) >= 0) {
             /* TODO: This should timeout eventually... */
             vTaskDelay(pdMS_TO_TICKS(250));
         }
         FreeRTOS_closesocket(ctx->s);
-        ctx->s = -1;
+        ctx->s = NULL;
     }
 }
 #else
@@ -354,20 +370,16 @@ static int _modbus_tcp_set_ipv4_options(int s)
 }
 
 #if defined(__freertos__)
-/* TODO: Match the API to the original _connect(), which uses a socket set */
 static int _connect(Socket_t sockfd, const struct freertos_sockaddr *addr, socklen_t addrlen,
                     const struct timeval *ro_tv)
 {
-    printf("In connect()\n");
-    printf("> port: %d\n", addr->sin_port);
-    uint8_t *temp = (uint8_t *)pvPortMalloc(16*sizeof(uint8_t));
-    FreeRTOS_inet_ntoa(addr->sin_addr, temp);
-    printf("> addr: %s\n", temp);
-
     /* Returns 0 if connection succeeds; otherwise, one of many errors
      * since FreeRTOS doesn't implement errno:
      * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/API/connect.html */
     int rc = FreeRTOS_connect(sockfd, addr, addrlen);
+
+    /* TODO: remove these debug statements
+     * TODO: implement the socket() command for the EINPROGRESS error */
     if (rc == -pdFREERTOS_ERRNO_EBADF) {
         printf("> connect: pdFREERTOS_ERRNO_EBADF\n");
     } else if (rc == -pdFREERTOS_ERRNO_EINPROGRESS) {
@@ -430,18 +442,49 @@ static int _connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen,
 #endif
 
 /* Establishes a modbus TCP connection with a Modbus server. */
+#if defined(__freertos__)
+static int _modbus_tcp_connect(modbus_t *ctx)
+{
+    int rc;
+    struct freertos_sockaddr addr;
+    modbus_tcp_t *ctx_tcp = ctx->backend_data;
+
+    ctx->s = FreeRTOS_socket(FREERTOS_AF_INET,
+                             FREERTOS_SOCK_STREAM,
+                             FREERTOS_IPPROTO_TCP);
+    configASSERT(ctx->s != FREERTOS_INVALID_SOCKET)
+
+    rc = _modbus_tcp_set_ipv4_options(ctx->s);
+    if (rc == -1) {
+        _modbus_tcp_close(ctx->s);
+        ctx->s = NULL;
+        return -1;
+    }
+
+    if (ctx->debug) {
+        printf("Connecting to %s:%d\n", ctx_tcp->ip, ctx_tcp->port);
+    }
+
+    addr.sin_port = FreeRTOS_htons(ctx_tcp->port);
+    addr.sin_addr = FreeRTOS_inet_addr(ctx_tcp->ip);
+    rc = _connect(ctx->s, &addr, sizeof(addr), &ctx->response_timeout);
+    if (rc == -1) {
+        _modbus_tcp_close(ctx->s);
+        ctx->s = NULL;
+        return -1;
+    }
+
+    return 0;
+}
+#else
 static int _modbus_tcp_connect(modbus_t *ctx)
 {
     int rc;
     int flags = 0;
 
-#if defined(__freertos__)
-    struct freertos_sockaddr addr;
-#else
     /* Specialized version of sockaddr for Internet socket address (same size) */
     struct sockaddr_in addr;
     flags = SOCK_STREAM;
-#endif
     modbus_tcp_t *ctx_tcp = ctx->backend_data;
 
 #ifdef OS_WIN32
@@ -458,25 +501,14 @@ static int _modbus_tcp_connect(modbus_t *ctx)
     flags |= SOCK_NONBLOCK;
 #endif
 
-#if defined(__freertos__)
-    ctx->s = FreeRTOS_socket(FREERTOS_AF_INET,
-                             FREERTOS_SOCK_STREAM,
-                             FREERTOS_IPPROTO_TCP);
-    configASSERT(ctx->s != FREERTOS_INVALID_SOCKET)
-#else
     ctx->s = socket(PF_INET, flags, 0);
     if (ctx->s == -1) {
         return -1;
     }
-#endif
 
     rc = _modbus_tcp_set_ipv4_options(ctx->s);
     if (rc == -1) {
-#if defined(__freertos__)
-        _modbus_tcp_close(ctx->s);
-#else
         close(ctx->s);
-#endif
         ctx->s = -1;
         return -1;
     }
@@ -485,16 +517,6 @@ static int _modbus_tcp_connect(modbus_t *ctx)
         printf("Connecting to %s:%d\n", ctx_tcp->ip, ctx_tcp->port);
     }
 
-#if defined(__freertos__)
-    addr.sin_port = FreeRTOS_htons(ctx_tcp->port);
-    addr.sin_addr = FreeRTOS_inet_addr(ctx_tcp->ip);
-    rc = _connect(ctx->s, &addr, sizeof(addr), &ctx->response_timeout);
-    if (rc == -1) {
-        _modbus_tcp_close(ctx->s);
-        ctx->s = -1;
-        return -1;
-    }
-#else
     addr.sin_family = AF_INET;
     addr.sin_port = htons(ctx_tcp->port);
     addr.sin_addr.s_addr = inet_addr(ctx_tcp->ip);
@@ -504,10 +526,10 @@ static int _modbus_tcp_connect(modbus_t *ctx)
         ctx->s = -1;
         return -1;
     }
-#endif
 
     return 0;
 }
+#endif
 
 /* Establishes a modbus TCP PI connection with a Modbus server. */
 static int _modbus_tcp_pi_connect(modbus_t *ctx)
@@ -597,43 +619,17 @@ static int _modbus_tcp_pi_connect(modbus_t *ctx)
 /* Listens for any request from one or many modbus masters in TCP */
 #if defined(__freertos__)
 Socket_t modbus_tcp_listen(modbus_t *ctx, int nb_connection)
-#else
-int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
-#endif
 {
-    printf("In listen()\n");
-#if defined(__freertos__)
     Socket_t new_s;
     struct freertos_sockaddr addr;
     BaseType_t enable;
     int flags;
-#else
-    int new_s;
-    struct sockaddr_in addr;
-    int enable;
-    int flags;
-#endif
 
     modbus_tcp_t *ctx_tcp;
 
-#if defined(__freertos__)
     configASSERT(ctx != NULL);
-#else
-    if (ctx == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
-#endif
 
     ctx_tcp = ctx->backend_data;
-
-#ifdef OS_WIN32
-    if (_modbus_tcp_init_win32() == -1) {
-        return -1;
-    }
-#endif
-
-#if defined(__freertos__)
     new_s = FreeRTOS_socket(FREERTOS_AF_INET,
                             FREERTOS_SOCK_STREAM,
                             FREERTOS_IPPROTO_TCP);
@@ -641,15 +637,15 @@ int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
         return NULL;
     }
 
+    /* Set the socket options to reuse the parent socket when accepting a connection */
     enable = pdTRUE;
-    if (FreeRTOS_setsockopt(new_s, 0, FREERTOS_SO_REUSE_LISTEN_SOCKET,
-                        (void *) &enable, sizeof(enable)) == -FREERTOS_EINVAL) {
-        _modbus_tcp_close(new_s);
-        return NULL;
-    }
+    FreeRTOS_setsockopt(new_s,
+                        0,
+                        FREERTOS_SO_REUSE_LISTEN_SOCKET,
+                        (void *) &enable,
+                        sizeof(enable));
 
     /* If the modbus port is < to 1024, we need the setuid root. */
-    printf("> binding to %d\n", ctx_tcp->port);
     addr.sin_port = FreeRTOS_htons(ctx_tcp->port);
     if (ctx_tcp->ip[0] != '0') {
         /* FreeRTOS doesn't support INADDR_ANY, but not binding to an address
@@ -657,7 +653,6 @@ int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
          * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/TCP_Networking_Tutorial_TCP_Client_and_Server.html */
 
         /* Listen only specified IP address */
-        printf("> binding to %s\n", ctx_tcp->ip);
         addr.sin_addr = FreeRTOS_inet_addr(ctx_tcp->ip);
     }
     if (FreeRTOS_bind(new_s, &addr, sizeof(addr)) != 0) {
@@ -669,7 +664,32 @@ int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
         _modbus_tcp_close(new_s);
         return NULL;
     }
+
+    return new_s;
+}
 #else
+int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
+{
+    int new_s;
+    struct sockaddr_in addr;
+    int enable;
+    int flags;
+
+    modbus_tcp_t *ctx_tcp;
+
+    if (ctx == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ctx_tcp = ctx->backend_data;
+
+#ifdef OS_WIN32
+    if (_modbus_tcp_init_win32() == -1) {
+        return -1;
+    }
+#endif
+
     flags = SOCK_STREAM;
 
 #ifdef SOCK_CLOEXEC
@@ -708,11 +728,10 @@ int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
         close(new_s);
         return -1;
     }
-#endif
 
-    printf("> listening...\n");
     return new_s;
 }
+#endif /* defined(__freertos__) */
 
 int modbus_tcp_pi_listen(modbus_t *ctx, int nb_connection)
 {
@@ -840,20 +859,32 @@ int modbus_tcp_pi_listen(modbus_t *ctx, int nb_connection)
 #if defined(__freertos__)
 Socket_t modbus_tcp_accept(modbus_t *ctx, Socket_t *s)
 {
-    printf("In accept()\n");
     struct freertos_sockaddr addr;
     socklen_t addrlen = sizeof(addr);
-    TickType_t xReceiveTimeOut = portMAX_DELAY;
+    TickType_t xReceiveTimeOut;
 
     if (ctx == NULL) {
         return NULL;
     }
 
-    /* Set a time out so accept() will just wait for a connection. */
-    FreeRTOS_setsockopt(*s, 0, FREERTOS_SO_RCVTIMEO, &xReceiveTimeOut, sizeof(xReceiveTimeOut));
+    /* Set a time out to portMAX_DELAY so accept() will just wait for a connection. */
+    xReceiveTimeOut = portMAX_DELAY;
+    FreeRTOS_setsockopt(*s,
+                        0,
+                        FREERTOS_SO_RCVTIMEO,
+                        &xReceiveTimeOut,
+                        sizeof(xReceiveTimeOut));
 
     ctx->s = FreeRTOS_accept(*s, &addr, &addrlen);
     configASSERT(ctx->s != FREERTOS_INVALID_SOCKET && ctx->s != NULL);
+
+    /* Set a time out to zero so recv() will not block. */
+    xReceiveTimeOut = 0;
+    FreeRTOS_setsockopt(*s,
+                        0,
+                        FREERTOS_SO_RCVTIMEO,
+                        &xReceiveTimeOut,
+                        sizeof(xReceiveTimeOut));
 
     if (ctx->debug) {
         uint8_t *pucBuffer = (uint8_t *)pvPortMalloc(16 * sizeof(uint8_t));
@@ -935,10 +966,10 @@ int modbus_tcp_pi_accept(modbus_t *ctx, int *s)
 static int _modbus_tcp_select(modbus_t *ctx, SocketSet_t rset, struct timeval *tv, int length_to_read)
 {
     int s_rc;
-    /* const TickType_t xBlockTimeTicks = pdMS_TO_TICKS( */
-    /*         (ctx->response_timeout.tv_sec * 1000) + */
-    /*         (ctx->response_timeout.tv_usec / 1000)); */
-    const TickType_t xBlockTimeTicks = portMAX_DELAY;
+    const TickType_t xBlockTimeTicks = pdMS_TO_TICKS(
+            (ctx->response_timeout.tv_sec * 1000) +
+            (ctx->response_timeout.tv_usec / 1000));
+
     /* If select is interrupted by a signal, then recreate the set and try again */
     while ((s_rc = FreeRTOS_select(rset, xBlockTimeTicks)) == -pdFREERTOS_ERRNO_EINTR) {
         if (ctx->debug) {
