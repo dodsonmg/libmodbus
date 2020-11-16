@@ -621,15 +621,17 @@ static int _modbus_tcp_pi_connect(modbus_t *ctx)
 Socket_t modbus_tcp_listen(modbus_t *ctx, int nb_connection)
 {
     Socket_t new_s;
-    struct freertos_sockaddr addr;
     BaseType_t enable;
     int flags;
-
+    struct freertos_sockaddr addr;
     modbus_tcp_t *ctx_tcp;
 
-    configASSERT(ctx != NULL);
+    if (ctx == NULL) {
+        return NULL;
+    }
 
     ctx_tcp = ctx->backend_data;
+
     new_s = FreeRTOS_socket(FREERTOS_AF_INET,
                             FREERTOS_SOCK_STREAM,
                             FREERTOS_IPPROTO_TCP);
@@ -648,7 +650,7 @@ Socket_t modbus_tcp_listen(modbus_t *ctx, int nb_connection)
     /* If the modbus port is < to 1024, we need the setuid root. */
     addr.sin_port = FreeRTOS_htons(ctx_tcp->port);
     if (ctx_tcp->ip[0] != '0') {
-        /* FreeRTOS doesn't support INADDR_ANY, but not binding to an address
+        /* FreeRTOS doesn't support INADDR_ANY, but not binding to any address
          * seems to be the default behaviour:
          * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/TCP_Networking_Tutorial_TCP_Client_and_Server.html */
 
@@ -875,8 +877,13 @@ Socket_t modbus_tcp_accept(modbus_t *ctx, Socket_t *s)
                         &xReceiveTimeOut,
                         sizeof(xReceiveTimeOut));
 
+    printf("Waiting to accept...\n");
     ctx->s = FreeRTOS_accept(*s, &addr, &addrlen);
-    configASSERT(ctx->s != FREERTOS_INVALID_SOCKET && ctx->s != NULL);
+    printf("Returned from accept...\n");
+
+    if(ctx->s == NULL || ctx->s == FREERTOS_INVALID_SOCKET) {
+        return ctx->s;
+    }
 
     /* Set a time out to zero so recv() will not block. */
     xReceiveTimeOut = 0;

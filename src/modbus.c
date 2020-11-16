@@ -2333,7 +2333,11 @@ void _modbus_init_common(modbus_t *ctx)
 {
     /* Slave and socket are initialized to -1 */
     ctx->slave = -1;
+#if defined(__freertos__)
+    ctx->s = NULL;
+#else
     ctx->s = -1;
+#endif
 
     ctx->debug = FALSE;
     ctx->error_recovery = MODBUS_ERROR_RECOVERY_NONE;
