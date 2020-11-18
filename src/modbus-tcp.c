@@ -55,6 +55,12 @@
 #define MSG_DONTWAIT MSG_NONBLOCK
 #endif
 
+#if defined(__freertos__)
+/* The maximum time to wait for a closing socket to close. */
+#define cmdSHUTDOWN_DELAY   ( pdMS_TO_TICKS( 5000 ) )
+#endif
+
+
 #include "modbus-private.h"
 
 #include "modbus/modbus-tcp.h"
@@ -164,6 +170,31 @@ static int _modbus_tcp_send_msg_pre(uint8_t *req, int req_length)
     return req_length;
 }
 
+#if defined(__freertos__)
+static int _modbus_tcp_flush(modbus_t *ctx)
+{
+    int rc;
+    int rc_sum = 0;
+    TickType_t xTimeOnShutdown;
+
+    /* Extract the garbage from the socket */
+    char devnull[MODBUS_TCP_MAX_ADU_LENGTH];
+
+    /* Loop either until the receive buffer is flushed or we've gone on too long */
+    do
+    {
+        rc = FreeRTOS_recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, 0);
+        if( rc < 0 )
+        {
+            break;
+        } else {
+            rc_sum += rc;
+        }
+    } while( rc == MODBUS_TCP_MAX_ADU_LENGTH || ( xTaskGetTickCount() - xTimeOnShutdown ) < cmdSHUTDOWN_DELAY );
+
+    return rc_sum;
+}
+#else
 static int _modbus_tcp_flush(modbus_t *ctx)
 {
     int rc;
@@ -190,19 +221,6 @@ static int _modbus_tcp_flush(modbus_t *ctx)
             /* There is data to flush */
             rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, 0);
         }
-#elif defined(__freertos__)
-        /* set time for FreeRTOS_select() to block */
-        const TickType_t xBlockTimeTicks = 0;
-
-        /* Reduce the receive timeout to zero for flushing */
-        TickType_t xReceiveTimeOut = 0;
-        FreeRTOS_setsockopt(ctx->s, 0, FREERTOS_SO_RCVTIMEO, &xReceiveTimeOut, sizeof(xReceiveTimeOut));
-
-        rc = FreeRTOS_recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, 0);
-
-        /* Restore the timeout to portMAX_DELAY */
-        xReceiveTimeOut = portMAX_DELAY;
-        FreeRTOS_setsockopt(ctx->s, 0, FREERTOS_SO_RCVTIMEO, &xReceiveTimeOut, sizeof(xReceiveTimeOut));
 #else
         rc = recv(ctx->s, devnull, MODBUS_TCP_MAX_ADU_LENGTH, MSG_DONTWAIT);
 #endif
@@ -213,6 +231,7 @@ static int _modbus_tcp_flush(modbus_t *ctx)
 
     return rc_sum;
 }
+#endif
 
 /* Closes the network connection and socket in TCP mode */
 #if defined(__freertos__)
@@ -222,10 +241,9 @@ static void _modbus_tcp_close(modbus_t *ctx)
      * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/TCP_Networking_Tutorial_Sending_TCP_Data.html */
     if (ctx->s != NULL) {
         FreeRTOS_shutdown(ctx->s, FREERTOS_SHUT_RDWR);
-        while(_modbus_tcp_flush(ctx) > 0) {
-            /* TODO: This should timeout eventually... */
-            vTaskDelay(pdMS_TO_TICKS(250));
-        }
+
+        _modbus_tcp_flush(ctx);
+
         FreeRTOS_closesocket(ctx->s);
         ctx->s = NULL;
     }
@@ -866,14 +884,19 @@ Socket_t modbus_tcp_accept(modbus_t *ctx, Socket_t *s)
         return NULL;
     }
 
-    printf("Waiting to accept...\n");
     ctx->s = FreeRTOS_accept(*s, &addr, &addrlen);
-
-    printf("Returned from accept...\n");
 
     if(ctx->s == NULL || ctx->s == FREERTOS_INVALID_SOCKET) {
         return ctx->s;
     }
+
+    /* Set the receive timeout to 0 so recv() won't block. */
+    xReceiveTimeOut = 0;
+    FreeRTOS_setsockopt(*s,
+                        0,
+                        FREERTOS_SO_RCVTIMEO,
+                        &xReceiveTimeOut,
+                        sizeof(xReceiveTimeOut));
 
     if (ctx->debug) {
         uint8_t *pucBuffer = (uint8_t *)pvPortMalloc(16 * sizeof(uint8_t));
