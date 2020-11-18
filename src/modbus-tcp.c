@@ -315,17 +315,22 @@ static int _modbus_tcp_pre_check_confirmation(modbus_t *ctx, const uint8_t *req,
 }
 
 #if defined(__freertos__)
+/* FreeRTOS doesn't require (or have these settings, so don't call this funtion:
+ * TCP_NODELAY:  This is default behaviour in FreeRTOS unless FREERTOS_SO_SET_FULL_SIZE is set
+ * IPTOS_LOWDELAY:  This is not available with FreeRTOS and probably not necessary
+ * SOCK_NONBLOCK:  The FreeRTOS socket shouldn't be blocking anyway
+ */
 static int _modbus_tcp_set_ipv4_options(Socket_t s)
+{
+    /* This should never be called */
+    return -1;
+}
 #else
 static int _modbus_tcp_set_ipv4_options(int s)
-#endif
 {
     int rc;
     int option;
 
-    /* Set the TCP no delay flag */
-    /* This is default behaviour in FreeRTOS unless FREERTOS_SO_SET_FULL_SIZE is set */
-#if !defined(__freertos__)
     /* SOL_TCP = IPPROTO_TCP */
     option = 1;
     rc = setsockopt(s, IPPROTO_TCP, TCP_NODELAY,
@@ -333,13 +338,12 @@ static int _modbus_tcp_set_ipv4_options(int s)
     if (rc == -1) {
         return -1;
     }
-#endif
 
     /* Make the socket non-blocking
      * If the OS does not offer SOCK_NONBLOCK:
      * - fall back to setting FIONBIO */
     /* Do not care about the return value, this is optional */
-#if !defined(SOCK_NONBLOCK) && !defined(__freertos__)
+#if !defined(SOCK_NONBLOCK)
 #if defined(FIONBIO) && defined(OS_WIN32)
     {
         /* Setting FIONBIO expects an unsigned long according to MSDN */
@@ -352,7 +356,7 @@ static int _modbus_tcp_set_ipv4_options(int s)
 #endif
 #endif
 
-#if !defined(OS_WIN32) && !defined(__freertos__)
+#if !defined(OS_WIN32)
     /**
      * Cygwin defines IPTOS_LOWDELAY but can't handle that flag so it's
      * necessary to workaround that problem.
@@ -368,6 +372,7 @@ static int _modbus_tcp_set_ipv4_options(int s)
 
     return 0;
 }
+#endif
 
 #if defined(__freertos__)
 static int _connect(Socket_t sockfd, const struct freertos_sockaddr *addr, socklen_t addrlen,
@@ -452,10 +457,7 @@ static int _modbus_tcp_connect(modbus_t *ctx)
     ctx->s = FreeRTOS_socket(FREERTOS_AF_INET,
                              FREERTOS_SOCK_STREAM,
                              FREERTOS_IPPROTO_TCP);
-    configASSERT(ctx->s != FREERTOS_INVALID_SOCKET)
-
-    rc = _modbus_tcp_set_ipv4_options(ctx->s);
-    if (rc == -1) {
+    if (ctx->s == FREERTOS_INVALID_SOCKET) {
         _modbus_tcp_close(ctx->s);
         ctx->s = NULL;
         return -1;
@@ -624,6 +626,7 @@ Socket_t modbus_tcp_listen(modbus_t *ctx, int nb_connection)
     BaseType_t enable;
     int flags;
     struct freertos_sockaddr addr;
+    TickType_t xReceiveTimeOut;
     modbus_tcp_t *ctx_tcp;
 
     if (ctx == NULL) {
@@ -632,12 +635,21 @@ Socket_t modbus_tcp_listen(modbus_t *ctx, int nb_connection)
 
     ctx_tcp = ctx->backend_data;
 
+    /* attempt to open the socket */
     new_s = FreeRTOS_socket(FREERTOS_AF_INET,
                             FREERTOS_SOCK_STREAM,
                             FREERTOS_IPPROTO_TCP);
     if (new_s == FREERTOS_INVALID_SOCKET) {
         return NULL;
     }
+
+    /* Set a time out to portMAX_DELAY so accept() will just wait for a connection. */
+    xReceiveTimeOut = portMAX_DELAY;
+    FreeRTOS_setsockopt(new_s,
+                        0,
+                        FREERTOS_SO_RCVTIMEO,
+                        &xReceiveTimeOut,
+                        sizeof(xReceiveTimeOut));
 
     /* Set the socket options to reuse the parent socket when accepting a connection */
     enable = pdTRUE;
@@ -869,29 +881,14 @@ Socket_t modbus_tcp_accept(modbus_t *ctx, Socket_t *s)
         return NULL;
     }
 
-    /* Set a time out to portMAX_DELAY so accept() will just wait for a connection. */
-    xReceiveTimeOut = portMAX_DELAY;
-    FreeRTOS_setsockopt(*s,
-                        0,
-                        FREERTOS_SO_RCVTIMEO,
-                        &xReceiveTimeOut,
-                        sizeof(xReceiveTimeOut));
-
     printf("Waiting to accept...\n");
     ctx->s = FreeRTOS_accept(*s, &addr, &addrlen);
+
     printf("Returned from accept...\n");
 
     if(ctx->s == NULL || ctx->s == FREERTOS_INVALID_SOCKET) {
         return ctx->s;
     }
-
-    /* Set a time out to zero so recv() will not block. */
-    xReceiveTimeOut = 0;
-    FreeRTOS_setsockopt(*s,
-                        0,
-                        FREERTOS_SO_RCVTIMEO,
-                        &xReceiveTimeOut,
-                        sizeof(xReceiveTimeOut));
 
     if (ctx->debug) {
         uint8_t *pucBuffer = (uint8_t *)pvPortMalloc(16 * sizeof(uint8_t));
