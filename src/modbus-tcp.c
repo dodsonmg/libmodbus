@@ -194,21 +194,6 @@ static int _modbus_tcp_flush(modbus_t *ctx)
         /* set time for FreeRTOS_select() to block */
         const TickType_t xBlockTimeTicks = 0;
 
-        /* Create a socket set */
-        SocketSet_t rset = FreeRTOS_CreateSocketSet(); // posix: file descriptor set
-
-        /* Add a socket (posix: file descriptor) to the set */
-        FreeRTOS_FD_SET(ctx->s, rset, eSELECT_READ);
-
-        /* Call select().  Return an error if select doesnt return 1. */
-        rc = FreeRTOS_select(rset, xBlockTimeTicks);
-        if (rc != 1) {
-            /* TODO: Print error */
-            return -1;
-        }
-
-        /* There is data to flush */
-
         /* Reduce the receive timeout to zero for flushing */
         TickType_t xReceiveTimeOut = 0;
         FreeRTOS_setsockopt(ctx->s, 0, FREERTOS_SO_RCVTIMEO, &xReceiveTimeOut, sizeof(xReceiveTimeOut));
@@ -237,7 +222,7 @@ static void _modbus_tcp_close(modbus_t *ctx)
      * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/TCP_Networking_Tutorial_Sending_TCP_Data.html */
     if (ctx->s != NULL) {
         FreeRTOS_shutdown(ctx->s, FREERTOS_SHUT_RDWR);
-        while(_modbus_tcp_flush(ctx) >= 0) {
+        while(_modbus_tcp_flush(ctx) > 0) {
             /* TODO: This should timeout eventually... */
             vTaskDelay(pdMS_TO_TICKS(250));
         }
