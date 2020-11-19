@@ -978,9 +978,15 @@ int modbus_tcp_pi_accept(modbus_t *ctx, int *s)
 static int _modbus_tcp_select(modbus_t *ctx, SocketSet_t rset, struct timeval *tv, int length_to_read)
 {
     int s_rc;
-    const TickType_t xBlockTimeTicks = pdMS_TO_TICKS(
-            (ctx->response_timeout.tv_sec * 1000) +
-            (ctx->response_timeout.tv_usec / 1000));
+    TickType_t xBlockTimeTicks;
+
+    if (tv == NULL) {
+        xBlockTimeTicks = portMAX_DELAY;
+    } else {
+        xBlockTimeTicks = pdMS_TO_TICKS(
+                (ctx->response_timeout.tv_sec * 1000) +
+                (ctx->response_timeout.tv_usec / 1000));
+    }
 
     /* If select is interrupted by a signal, then recreate the set and try again */
     while ((s_rc = FreeRTOS_select(rset, xBlockTimeTicks)) == -pdFREERTOS_ERRNO_EINTR) {

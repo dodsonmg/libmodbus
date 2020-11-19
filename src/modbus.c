@@ -426,35 +426,24 @@ int _modbus_receive_msg(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type)
 
     while (length_to_read != 0) {
         rc = ctx->backend->select(ctx, rset, p_tv, length_to_read);
-        if (rc == 0) {
+        if (rc == -1) {
             /* TODO: Print error for timeout */
+            _error_print(ctx, "select");
             _sleep_response_timeout(ctx);
             modbus_flush(ctx);
-        } else if (rc == -pdFREERTOS_ERRNO_EINTR) {
-            /* TODO: Print error for interrupt */
-            modbus_close(ctx);
-            modbus_connect(ctx);
-        } else if (rc != 1) {
-            /* TODO: Print error */
             return -1;
         }
 
         rc = ctx->backend->recv(ctx, msg + msg_length, length_to_read);
         if (rc == 0) {
-            errno = ECONNRESET;
             rc = -1;
         }
 
         if (rc == -1) {
             _error_print(ctx, "read");
-            if ((ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) &&
-                (errno == ECONNRESET || errno == ECONNREFUSED ||
-                 errno == EBADF)) {
-                int saved_errno = errno;
+            if ((ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK)) {
                 modbus_close(ctx);
                 modbus_connect(ctx);
-                /* Could be removed by previous calls */
-                errno = saved_errno;
             }
             return -1;
         }
