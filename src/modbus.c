@@ -402,7 +402,7 @@ int _modbus_receive_msg(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type)
     _step_t step;
 
     /* Add a socket (posix: file descriptor) to the set */
-    FreeRTOS_FD_SET(ctx->s, rset, eSELECT_READ);
+    FreeRTOS_FD_SET(ctx->s, rset, eSELECT_READ | eSELECT_EXCEPT);
 
     /* We need to analyse the message step by step.  At the first step, we want
      * to reach the function code because all packets contain this
@@ -430,9 +430,8 @@ int _modbus_receive_msg(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type)
 
     while (length_to_read != 0) {
         rc = ctx->backend->select(ctx, rset, p_tv, length_to_read);
+        /* If there is a timeout, flush and return */
         if (rc == -1) {
-            /* TODO: Print error for timeout */
-            _error_print(ctx, "select");
             _sleep_response_timeout(ctx);
             modbus_flush(ctx);
             return -1;

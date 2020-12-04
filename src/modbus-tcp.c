@@ -981,6 +981,7 @@ static int _modbus_tcp_select(modbus_t *ctx, SocketSet_t rset, struct timeval *t
     TickType_t xBlockTimeTicks;
 
     if (tv == NULL) {
+        /* If no timeval set, block indefinitely */
         xBlockTimeTicks = portMAX_DELAY;
     } else {
         xBlockTimeTicks = pdMS_TO_TICKS(
@@ -995,7 +996,7 @@ static int _modbus_tcp_select(modbus_t *ctx, SocketSet_t rset, struct timeval *t
         }
         /* Necessary after an error */
         rset = FreeRTOS_CreateSocketSet();
-        FreeRTOS_FD_SET(ctx->s, rset, eSELECT_READ);
+        FreeRTOS_FD_SET(ctx->s, rset, eSELECT_READ | eSELECT_EXCEPT);
     }
 
     /* if select() times out, return -1 */
