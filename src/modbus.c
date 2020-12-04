@@ -84,7 +84,11 @@ void _error_print(modbus_t *ctx, const char *context)
 {
     if (ctx->debug)
     {
+#if defined(__freertos__)
+        fprintf(stderr, "ERROR");
+#else
         fprintf(stderr, "ERROR %s", modbus_strerror(errno));
+#endif
         if (context != NULL)
         {
             fprintf(stderr, ": %s\n", context);
