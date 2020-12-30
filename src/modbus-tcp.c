@@ -654,14 +654,6 @@ Socket_t modbus_tcp_listen(modbus_t *ctx, int nb_connection)
                         &xReceiveTimeOut,
                         sizeof(xReceiveTimeOut));
 
-    /* Set the socket options to reuse the parent socket when accepting a connection */
-    enable = pdTRUE;
-    FreeRTOS_setsockopt(new_s,
-                        0,
-                        FREERTOS_SO_REUSE_LISTEN_SOCKET,
-                        (void *) &enable,
-                        sizeof(enable));
-
     /* If the modbus port is < to 1024, we need the setuid root. */
     addr.sin_port = FreeRTOS_htons(ctx_tcp->port);
     if (FreeRTOS_bind(new_s, &addr, sizeof(addr)) != 0) {
@@ -884,7 +876,7 @@ Socket_t modbus_tcp_accept(modbus_t *ctx, Socket_t *s)
 
     /* Set the receive timeout to 0 so recv() won't block. */
     xReceiveTimeOut = 0;
-    FreeRTOS_setsockopt(*s,
+    FreeRTOS_setsockopt(ctx->s,
                         0,
                         FREERTOS_SO_RCVTIMEO,
                         &xReceiveTimeOut,
