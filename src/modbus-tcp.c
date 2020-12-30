@@ -983,6 +983,11 @@ static int _modbus_tcp_select(modbus_t *ctx, SocketSet_t rset, struct timeval *t
         FreeRTOS_FD_SET(ctx->s, rset, eSELECT_READ | eSELECT_EXCEPT);
     }
 
+    /* If disconnected, return -1. */
+    if (s_rc == eSELECT_EXCEPT) {
+        return -1;
+    }
+
     /* if select() times out, return -1 */
     if (s_rc == 0) {
         return -1;
