@@ -664,14 +664,6 @@ Socket_t modbus_tcp_listen(modbus_t *ctx, int nb_connection)
 
     /* If the modbus port is < to 1024, we need the setuid root. */
     addr.sin_port = FreeRTOS_htons(ctx_tcp->port);
-    if (ctx_tcp->ip[0] != '0') {
-        /* FreeRTOS doesn't support INADDR_ANY, but not binding to any address
-         * seems to be the default behaviour:
-         * https://www.freertos.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/TCP_Networking_Tutorial_TCP_Client_and_Server.html */
-
-        /* Listen only specified IP address */
-        addr.sin_addr = FreeRTOS_inet_addr(ctx_tcp->ip);
-    }
     if (FreeRTOS_bind(new_s, &addr, sizeof(addr)) != 0) {
         _modbus_tcp_close(new_s);
         return NULL;
