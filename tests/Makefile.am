@@ -8,6 +8,7 @@ noinst_PROGRAMS = \
 	random-test-client \
 	unit-test-server \
 	unit-test-client \
+	benchmark-client \
 	version
 
 common_ldflags = \
@@ -33,6 +34,9 @@ unit_test_server_LDADD = $(common_ldflags)
 
 unit_test_client_SOURCES = unit-test-client.c unit-test.h
 unit_test_client_LDADD = $(common_ldflags)
+
+benchmark_client_SOURCES = benchmark-client.c unit-test.h
+benchmark_client_LDADD = $(common_ldflags)
 
 version_SOURCES = version.c
 version_LDADD = $(common_ldflags)
