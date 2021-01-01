@@ -9,6 +9,7 @@ noinst_PROGRAMS = \
 	unit-test-server \
 	unit-test-client \
 	freertos-test-client \
+	freertos-test-client-short \
 	benchmark-client \
 	version
 
@@ -38,6 +39,9 @@ unit_test_client_LDADD = $(common_ldflags)
 
 freertos_test_client_SOURCES = freertos-test-client.c unit-test.h
 freertos_test_client_LDADD = $(common_ldflags)
+
+freertos_test_client_short_SOURCES = freertos-test-client-short.c unit-test.h
+freertos_test_client_short_LDADD = $(common_ldflags)
 
 benchmark_client_SOURCES = benchmark-client.c unit-test.h
 benchmark_client_LDADD = $(common_ldflags)
