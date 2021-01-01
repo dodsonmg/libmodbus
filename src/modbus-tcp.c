@@ -1022,8 +1022,13 @@ static int _modbus_tcp_select(modbus_t *ctx, fd_set *rset, struct timeval *tv, i
 #endif
 
 static void _modbus_tcp_free(modbus_t *ctx) {
+#if defined(__freertos__)
     vPortFree(ctx->backend_data);
     vPortFree(ctx);
+#else
+    free(ctx->backend_data);
+    free(ctx);
+#endif
 }
 
 /**
@@ -1157,7 +1162,11 @@ modbus_t* modbus_new_tcp_pi(const char *node, const char *service)
     size_t dest_size;
     size_t ret_size;
 
+#if defined(__freertos__)
     ctx = (modbus_t *)pvPortMalloc(sizeof(modbus_t));
+#else
+    ctx = (modbus_t *)malloc(sizeof(modbus_t));
+#endif
     if (ctx == NULL) {
         return NULL;
     }
@@ -1168,7 +1177,11 @@ modbus_t* modbus_new_tcp_pi(const char *node, const char *service)
 
     ctx->backend = &_modbus_tcp_pi_backend;
 
+#if defined(__freertos__)
     ctx->backend_data = (modbus_tcp_pi_t *)pvPortMalloc(sizeof(modbus_tcp_pi_t));
+#else
+    ctx->backend_data = (modbus_tcp_pi_t *)malloc(sizeof(modbus_tcp_pi_t));
+#endif
     if (ctx->backend_data == NULL) {
         modbus_free(ctx);
         errno = ENOMEM;

@@ -2578,7 +2578,11 @@ modbus_mapping_t *modbus_mapping_new_start_address(
 {
     modbus_mapping_t *mb_mapping;
 
+#if defined(__freertos__)
     mb_mapping = (modbus_mapping_t *)pvPortMalloc(sizeof(modbus_mapping_t));
+#else
+    mb_mapping = (modbus_mapping_t *)malloc(sizeof(modbus_mapping_t));
+#endif
     if (mb_mapping == NULL)
     {
         return NULL;
@@ -2594,6 +2598,7 @@ modbus_mapping_t *modbus_mapping_new_start_address(
     else
     {
         /* Negative number raises a POSIX error */
+#if defined(__freertos__)
         mb_mapping->tab_bits =
             (uint8_t *)pvPortMalloc(nb_bits * sizeof(uint8_t));
         if (mb_mapping->tab_bits == NULL)
@@ -2601,6 +2606,15 @@ modbus_mapping_t *modbus_mapping_new_start_address(
             vPortFree(mb_mapping);
             return NULL;
         }
+#else
+        mb_mapping->tab_bits =
+            (uint8_t *)malloc(nb_bits * sizeof(uint8_t));
+        if (mb_mapping->tab_bits == NULL)
+        {
+            free(mb_mapping);
+            return NULL;
+        }
+#endif
         memset(mb_mapping->tab_bits, 0, nb_bits * sizeof(uint8_t));
     }
 
@@ -2613,6 +2627,7 @@ modbus_mapping_t *modbus_mapping_new_start_address(
     }
     else
     {
+#if defined(__freertos__)
         mb_mapping->tab_input_bits =
             (uint8_t *)pvPortMalloc(nb_input_bits * sizeof(uint8_t));
         if (mb_mapping->tab_input_bits == NULL)
@@ -2621,6 +2636,16 @@ modbus_mapping_t *modbus_mapping_new_start_address(
             vPortFree(mb_mapping);
             return NULL;
         }
+#else
+        mb_mapping->tab_input_bits =
+            (uint8_t *)malloc(nb_input_bits * sizeof(uint8_t));
+        if (mb_mapping->tab_input_bits == NULL)
+        {
+            free(mb_mapping->tab_bits);
+            free(mb_mapping);
+            return NULL;
+        }
+#endif
         memset(mb_mapping->tab_input_bits, 0, nb_input_bits * sizeof(uint8_t));
     }
 
@@ -2633,6 +2658,7 @@ modbus_mapping_t *modbus_mapping_new_start_address(
     }
     else
     {
+#if defined(__freertos__)
         mb_mapping->tab_registers =
             (uint16_t *)pvPortMalloc(nb_registers * sizeof(uint16_t));
         if (mb_mapping->tab_registers == NULL)
@@ -2642,6 +2668,17 @@ modbus_mapping_t *modbus_mapping_new_start_address(
             vPortFree(mb_mapping);
             return NULL;
         }
+#else
+        mb_mapping->tab_registers =
+            (uint16_t *)malloc(nb_registers * sizeof(uint16_t));
+        if (mb_mapping->tab_registers == NULL)
+        {
+            free(mb_mapping->tab_input_bits);
+            free(mb_mapping->tab_bits);
+            free(mb_mapping);
+            return NULL;
+        }
+#endif
         memset(mb_mapping->tab_registers, 0, nb_registers * sizeof(uint16_t));
     }
 
@@ -2654,6 +2691,7 @@ modbus_mapping_t *modbus_mapping_new_start_address(
     }
     else
     {
+#if defined(__freertos__)
         mb_mapping->tab_input_registers =
             (uint16_t *)pvPortMalloc(nb_input_registers * sizeof(uint16_t));
         if (mb_mapping->tab_input_registers == NULL)
@@ -2664,11 +2702,24 @@ modbus_mapping_t *modbus_mapping_new_start_address(
             vPortFree(mb_mapping);
             return NULL;
         }
+#else
+        mb_mapping->tab_input_registers =
+            (uint16_t *)malloc(nb_input_registers * sizeof(uint16_t));
+        if (mb_mapping->tab_input_registers == NULL)
+        {
+            free(mb_mapping->tab_registers);
+            free(mb_mapping->tab_input_bits);
+            free(mb_mapping->tab_bits);
+            free(mb_mapping);
+            return NULL;
+        }
+#endif
         memset(mb_mapping->tab_input_registers, 0,
                nb_input_registers * sizeof(uint16_t));
     }
 
     /* tab_string */
+#if defined(__freertos__)
     mb_mapping->tab_string =
         (uint8_t *)pvPortMalloc(MODBUS_MAX_STRING_LENGTH * sizeof(uint8_t));
     if (mb_mapping->tab_string == NULL)
@@ -2680,6 +2731,19 @@ modbus_mapping_t *modbus_mapping_new_start_address(
         vPortFree(mb_mapping);
         return NULL;
     }
+#else
+    mb_mapping->tab_string =
+        (uint8_t *)malloc(MODBUS_MAX_STRING_LENGTH * sizeof(uint8_t));
+    if (mb_mapping->tab_string == NULL)
+    {
+        free(mb_mapping->tab_input_registers);
+        free(mb_mapping->tab_registers);
+        free(mb_mapping->tab_input_bits);
+        free(mb_mapping->tab_bits);
+        free(mb_mapping);
+        return NULL;
+    }
+#endif
     memset(mb_mapping->tab_string, 0, MODBUS_MAX_STRING_LENGTH * sizeof(uint8_t));
 
     return mb_mapping;
@@ -2700,11 +2764,19 @@ void modbus_mapping_free(modbus_mapping_t *mb_mapping)
         return;
     }
 
+#if defined(__freertos__)
     vPortFree(mb_mapping->tab_input_registers);
     vPortFree(mb_mapping->tab_registers);
     vPortFree(mb_mapping->tab_input_bits);
     vPortFree(mb_mapping->tab_bits);
     vPortFree(mb_mapping);
+#else
+    free(mb_mapping->tab_input_registers);
+    free(mb_mapping->tab_registers);
+    free(mb_mapping->tab_input_bits);
+    free(mb_mapping->tab_bits);
+    free(mb_mapping);
+#endif
 }
 
 #ifndef HAVE_STRLCPY
