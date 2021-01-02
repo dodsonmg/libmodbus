@@ -57,7 +57,7 @@
             (cheri_perms_get(cap) & CHERI_PERM_UNSEAL) > 0 ? 1 : 0,          \
             (cheri_perms_get(cap) & CHERI_PERM_SYSTEM_REGS) > 0 ? 1 : 0)
 #else
-#define CHERI_PRINT_CAP(cap) printf("b:%jx\n", cap)
+#define CHERI_PRINT_CAP(cap) printf("b:%jx\n", (uintmax_t)cap)
 #define CHERI_PRINT_CAP_LITE(cap) CHERI_PRINT_CAP(cap)
 #define CHERI_EXPAND_PERMS(cap) CHERI_PRINT_CAP(cap)
 #endif /* __has_feature(capabilities) */
